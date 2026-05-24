@@ -202,6 +202,41 @@ await fetch(EVENTS_URL, {
 }).catch(() => {});
 ```
 
+## File uploads
+
+Use `FILES` for uploading binary files (PDFs, images, etc.). Always check `res.ok` before treating the upload as successful — the server may reject the file (wrong MIME type → 415, too large → 413, storage limit → 507) and you must not create DB records pointing to a file that was never stored.
+
+```js
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res  = await fetch(FILES, { method: "POST", body: fd });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
+  const fileId  = data.id;
+  const fileUrl = data.url;   // use this URL to link or display the file
+  // now safe to insert into your DB
+}
+```
+
+Allowed MIME types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`, `image/heic`, `image/heif`, `application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (docx), `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` (xlsx), `text/plain`, `text/markdown`.
+
+## Resource limits
+
+The hub injects current limits into `window.__RESOURCE_LIMITS`:
+
+```js
+const LIMITS = window.__RESOURCE_LIMITS ?? {};
+// LIMITS.max_file_bytes      — max bytes per individual upload (default 10 MB)
+// LIMITS.max_files_bytes     — max total file storage for this app (default 500 MB)
+// LIMITS.max_db_bytes        — max DB storage for this app (default 200 MB)
+// LIMITS.max_store_bytes     — max KV storage for this app
+// LIMITS.max_store_reads_per_day
+// LIMITS.max_store_writes_per_day
+```
+
+Apps do not need to enforce these limits themselves — the hub enforces them and returns 507 when exceeded. But apps may read them to display a storage bar or warn the user before an upload.
+
 ## Base href
 
 Every app sets `<base href="/run/{app-id}/">` in `<head>` so relative asset paths resolve correctly inside the hub iframe.
