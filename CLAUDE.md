@@ -197,6 +197,68 @@ Apps inherit these CSS custom properties from the hub theme at runtime:
 
 Always define fallback values: `var(--hub-bg, #f9fafb)`.
 
+## Deep linking
+
+The hub can open an app at a specific item by appending query params to the iframe URL. Apps that support deep linking should read those params on startup and navigate to the referenced item.
+
+### Handling incoming deep-link params
+
+Read `window.location.search` during init and navigate to the referenced item if params are present:
+
+```js
+function handleDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const pollId = params.get("pollId");
+  if (pollId) openPoll(pollId);
+}
+
+(async () => {
+  await loadMembers();
+  await loadItems();
+  handleDeepLink(); // after data is loaded so the item exists
+  render();
+})();
+```
+
+Pick param names that are specific to your app (e.g. `pollId`, `taskId`, `recipeId`). The hub passes whatever params were in the link — there is no shared namespace.
+
+### Navigating to another app with params
+
+Use the `hub:open` postMessage to send the user to a specific item in another app:
+
+```js
+window.parent.postMessage({
+  type: "hub:open",
+  appId: "grocery",
+  params: { listId: "abc123" },
+}, "*");
+```
+
+The hub navigates to `/open/grocery?listId=abc123`, which passes `?listId=abc123` into the grocery app's iframe.
+
+### Logging activity with a deep link
+
+When you log hub-level activity (via `/api/activity` or a hub SDK helper), include a `deepLink` in the metadata so the activity item and notification bell become clickable links:
+
+```js
+await fetch("/api/activity", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    type: "poll_created",
+    description: `${ME.name} created a new poll: "${title}"`,
+    metadata: {
+      deepLink: {
+        appId: APP_ID,
+        params: { pollId: id },
+      },
+    },
+  }),
+}).catch(() => {});
+```
+
+The hub renders that activity entry as a link to `/open/{appId}?pollId={id}`. Without `deepLink`, the entry is plain text.
+
 ## Events API
 
 Publish cross-app events other apps can consume:
