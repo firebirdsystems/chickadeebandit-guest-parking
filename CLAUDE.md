@@ -14,6 +14,9 @@ const FILES           = window.__FILES_URL      ?? "";  // file upload endpoint
 const DOCS            = window.__DOCS_URL       ?? "";  // hub-native document storage (see below)
 const CROSS_WRITE_URL = window.__CROSS_WRITE_URL ?? ""; // cross-app writes (hub-sdk crossWrite uses this)
 const APPEND_RECORD   = window.__APPEND_RECORD_URL ?? ""; // append-only D1 records (append_only_records apps only)
+const CLAIM_URL       = window.__CLAIM_URL      ?? "";  // atomic capacity claims (slot_claims apps only)
+const RELEASE_URL     = window.__RELEASE_URL    ?? "";  // release caller's slot claim
+const SWAP_URL        = window.__SWAP_URL       ?? "";  // claim destination slot, then release source slot
 const APP_ID          = window.__APP_ID         ?? "my-app";
 const ME              = window.__CURRENT_MEMBER ?? null; // { id, name, role }
 const EVENTS_URL      = window.__EVENTS_URL     ?? "/api/events";
@@ -827,6 +830,12 @@ same restrictions.
   so child comments, votes, amendments, and records cannot be changed after the
   parent locks. The status column must be plaintext: `status` is built in; list
   custom enum columns in `db_plaintext_columns`.
+- `column_read_acls` is a per-column **read-masking** modifier available on any
+  policy kind with an owner column. Each listed column's value is returned as
+  `null` unless the caller matches its `visible_to`
+  (`"owner"` / `"adult"` / `"privileged"`). Use it when the whole row is
+  readable but one column is not — a word-game secret word visible only to the
+  setter, a valuation column visible only to adults.
 
 ### Policy kinds
 
@@ -922,6 +931,9 @@ per watchlist title, one guess per trivia round, one claim per slot.
 - This is for **attributed/non-secret** participation. If the answer or ballot
   must not be linkable to the member, use `anonymous_responses` or
   `anonymous_ballot` with a receipt table instead.
+- If the row also has a capacity constraint ("claim iff seats/shifts/slots remain"),
+  use `slot_claims` instead. A row policy can enforce uniqueness, but it cannot
+  atomically check `COUNT(existing claims) < capacity` while inserting.
 
 #### `frozen_when` — immutable after adopted / closed / archived
 
@@ -954,6 +966,51 @@ must stop accepting app-originated writes after a lifecycle state:
 - Do not use `INSERT ... ON CONFLICT DO UPDATE` against a frozen table; the hub
   rejects upsert updates because they could otherwise mutate an already-locked
   row through the conflict tail.
+
+#### `column_read_acls` — mask specific columns while the row stays readable
+
+Use `column_read_acls` when everyone may read the **row** but only some callers
+may read a particular **column** — the answer column in a word game, a valuation
+or salary column, alumni opt-in contact fields. It is a read-only mask layered on
+top of the base policy's row filter.
+
+```json
+{
+  "kind": "owner_or_visibility",
+  "member_column": "member_id",
+  "visibility_column": "visibility",
+  "everyone_values": ["everyone"],
+  "column_read_acls": {
+    "secret_word": { "visible_to": ["owner"] }
+  }
+}
+```
+
+- `visible_to` is a non-empty subset of `"owner"`, `"adult"`, `"privileged"`:
+  - `"owner"` — the row's owner column equals the caller. The owner column is the
+    same one the kind already uses (`member_column`, `self_column`,
+    `writer_column`, or `member_read_column` by kind), so `endpoint_only`,
+    `adult_only`, and `app_config` cannot use `"owner"`.
+  - `"adult"` — `memberRole === "adult"`.
+  - `"privileged"` — a member of the policy's `bypass_group_setting` group (for
+    `inherit_visibility`, the **parent** table's group). Requires that group to be set.
+- **Adults get no implicit bypass.** `visible_to: ["owner"]` hides the column from
+  adults too — only the row owner (and trusted hub endpoints) see it. List
+  `["owner", "adult"]` if adults should also see it.
+- The masked value is returned as `null` to non-authorized callers, applied to the
+  result rows after decryption. The column may stay encrypted at rest.
+- **For a non-authorized caller, a masked column may appear only as a plain
+  selected column** (`SELECT secret_word …` or `SELECT *`). Referencing it in
+  `WHERE`, `ORDER BY`, `GROUP BY`, `HAVING`, a function/expression
+  (`length(secret_word)`), a `JOIN`, a `UNION`, or the right-hand side of an
+  `UPDATE ... SET` is rejected with 403 — those would leak the value through a
+  comparison or ordering oracle. **Assigning** the column (`INSERT`,
+  `UPDATE ... SET secret_word = ?`) is allowed, so the owner can still write it.
+- You cannot mask a policy-structural column (the owner column, `visibility_column`,
+  a `unique_per_member` scope column, `frozen_when.status_column`, etc.) — manifest
+  validation rejects it, because the hub itself compares those columns.
+- This masks **reads**; it does not make the column immutable. For write control of
+  a column, keep it out of the writable table or write it through an endpoint.
 
 #### `owner_only_with_fk_check` — like `owner_only`, but the row references another owned row
 
@@ -1112,6 +1169,7 @@ or turn.
 | Same, but writes must go through a hub endpoint (e.g. vote receipts) | `owner_only` with `endpoint_writes_only: true` |
 | Like the above, but the row references another owned row (e.g. a transaction against a bank) | `owner_only_with_fk_check` |
 | A row can be private, shared with adults, or shared with everyone | `owner_or_visibility` |
+| The row is readable by all, but one column (secret word, valuation) only by the owner/adults/a group | Any owner-bearing kind plus `column_read_acls` |
 | The visible audience (all adults, or a configured group) should co-edit rows, but no one may write a row they can't see | `owner_or_visibility` with `write_visibility_scoped: true` |
 | Table-wide, adults-only data (account balances, fund totals) | `adult_only` |
 | Shared between exactly two partnered members | `couple_scoped` |
@@ -1144,6 +1202,153 @@ This catches schema mistakes before install, but does **not** test the
 actual SQL rewriting — when in doubt, check
 `packages/hub/__tests__/unit/cloudflare-row-policy.test.ts` in the hub repo
 for worked examples per policy kind.
+
+### Named AI queries (`ai_access`) obey the same row policies
+
+Your `ai_access` named SQL — `db_exports` (queries), `db_mutations`, `db_inserts`,
+`db_deletes` — runs through the **same** `row_policies` enforcement as `/api/db`.
+An AI caller does **not** get to bypass a policy. This has practical consequences
+for how you write those `.sql` files:
+
+- **The caller must pass a `member_id`.** MCP tokens are household-scoped and carry
+  no member identity, so the AI supplies `member_id` per call. A named query that
+  touches an `owner_only`, `owner_or_visibility`, or `adult_only` table **returns
+  403 ("Member identity required") when `member_id` is absent** — the same as a raw
+  `/api/db` call with no session member. Write your named queries assuming a member
+  is always provided, and document in the query's purpose which member's view it
+  returns.
+- **No JOINs or subqueries against a governed table.** The rewriter fails closed on
+  governed tables referenced through a JOIN or a subquery/CTE. Keep each named query
+  a single-table `SELECT` on the governed table; do lookups/labels in a second query
+  or denormalize the label onto the row.
+- **`column_read_acls` masking applies here too.** A `db_export` that selects a
+  masked column returns `null` for that column unless the passed `member_id` is the
+  owner (or an adult/privileged member per `visible_to`). Don't rely on a named
+  query to read a secret column on behalf of a non-owner.
+- **Named `INSERT`s into `owner_only` tables force the owner column to the caller.**
+  Include the member column in the insert and expect the hub to stamp it to
+  `member_id`; you cannot insert a row owned by someone else through a named insert.
+- `adult_writable` "everyone-read" tables are the exception — their `db_exports`
+  need no `member_id` (reads are open); only their writes require an adult.
+
+## Atomic capacity claims — `slot_claims`
+
+For sign-up sheets, shift claims, carpool seats, babysitting co-op coverage, amenity slots, and any "claim iff capacity remains" flow, use the `slot_claims` manifest mechanism instead of writing the claims table directly through `/api/db`.
+
+**Why you can't do this with row_policies alone:** capacity is a cross-row invariant. A browser can read "2 seats left" and then race another browser before inserting; `unique_per_member` can prevent duplicate claims by the same member, but it cannot atomically enforce `COUNT(claims) < slots.capacity`.
+
+### How it works
+
+Declare `slot_claims` in `manifest.json`. The hub injects `window.__CLAIM_URL`, `window.__RELEASE_URL`, and `window.__SWAP_URL`. The claim endpoint:
+
+1. Resolves the caller's `member_id` from the session (cannot be spoofed)
+2. Runs one atomic `INSERT ... SELECT` that inserts only if the slot exists, is open, capacity remains, and (optionally) the caller has not already claimed that slot
+3. Returns `201 { success: true, claim_id }` on success
+4. Returns `404` for a missing slot, or `409` with `reason: "slot_closed" | "slot_full" | "already_claimed"` when the guarded insert does not happen
+
+Release deletes only the caller's own claim. Swap claims the destination slot first, then releases the source slot; if the destination is full or closed, the original claim is untouched. Because D1 exposes only single-statement writes here, swap is not a true transaction: the hub best-effort rolls back the new claim if the source release fails.
+
+### Manifest config
+
+```jsonc
+{
+  "storage": "db",
+  "db_plaintext_columns": ["capacity", "note"],
+  "row_policies": {
+    "slot_claims": { "kind": "endpoint_only", "read": "everyone" }
+  },
+  "slot_claims": {
+    "slot_table": "slots",
+    "slot_id_column": "id",
+    "capacity_column": "capacity",
+    "slot_status_column": "status",
+    "slot_open_values": ["open"],
+    "claims_table": "slot_claims",
+    "claim_id_column": "id",
+    "slot_fk_column": "slot_id",
+    "member_column": "member_id",
+    "created_at_column": "created_at",
+    "one_claim_per_member": true,
+    "allow_release": true,
+    "allowed_columns": ["note"],
+    "max_text_lengths": { "note": 200 }
+  }
+}
+```
+
+- Table/column names are **unprefixed** in the manifest.
+- The claims table must be `endpoint_only`; otherwise a member can bypass capacity by POSTing raw SQL to `/api/db`.
+- `capacity_column`, `slot_status_column`, and every `allowed_columns` payload column must be plaintext. Built-ins like `id`, `status`, `created_at`, and `*_id` already are; custom columns like `capacity` or `note` must be listed in `db_plaintext_columns`.
+- `slot_open_values` is required when `slot_status_column` is present.
+- `allowed_columns` are optional app-defined payload columns on the claim row. The hub accepts only scalar JSON (`string`, `number`, `boolean`, `null`) and enforces `max_text_lengths`.
+
+### Schema requirements
+
+```sql
+CREATE TABLE IF NOT EXISTS app_myapp__slots (
+  id         TEXT PRIMARY KEY,
+  title      TEXT NOT NULL,
+  capacity   INTEGER NOT NULL CHECK (capacity >= 0),
+  status     TEXT NOT NULL DEFAULT 'open',
+  starts_at  TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_myapp__slot_claims (
+  id         TEXT PRIMARY KEY,
+  slot_id    TEXT NOT NULL,
+  member_id  TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  note       TEXT,
+  FOREIGN KEY (slot_id) REFERENCES app_myapp__slots(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_slot_claims_slot
+  ON app_myapp__slot_claims (slot_id);
+CREATE INDEX IF NOT EXISTS idx_slot_claims_member
+  ON app_myapp__slot_claims (member_id);
+```
+
+If `one_claim_per_member` is true, the endpoint enforces it. A unique index on `(slot_id, member_id)` is still fine as defense in depth, but do not rely on an index alone for capacity.
+
+### Client helpers
+
+```js
+async function claimSlot(slotId, payload = {}) {
+  const res = await fetch(window.__CLAIM_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slot_id: slotId, ...payload }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw Object.assign(new Error(json.error || "Claim failed"), { response: res, json });
+  return json; // { success: true, claim_id }
+}
+
+async function releaseSlot(slotId) {
+  const res = await fetch(window.__RELEASE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ slot_id: slotId }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw Object.assign(new Error(json.error || "Release failed"), { response: res, json });
+  return json; // { success: true }
+}
+
+async function swapSlot(fromSlotId, toSlotId, payload = {}) {
+  const res = await fetch(window.__SWAP_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_slot_id: fromSlotId, to_slot_id: toSlotId, ...payload }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) throw Object.assign(new Error(json.error || "Swap failed"), { response: res, json });
+  return json; // { success: true, claim_id }
+}
+```
+
+Handle `409` reasons explicitly in the UI: `slot_full` means someone else got the last spot, `already_claimed` means the caller already has a claim on that slot, and `slot_closed` means the slot's status is no longer claimable. After a successful claim/release/swap, patch local state optimistically or re-query just the affected slot and claim list.
 
 ## Anonymous submissions — `anonymous_responses`
 
