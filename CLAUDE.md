@@ -731,6 +731,53 @@ function canSeeItem(item) { return _canSeeItem(item, ME); }
 
 **When not to:** DB calls, render functions, event handlers, and anything that closes over module-level state belong in the HTML script and don't need extraction.
 
+## Behavioral scenarios (`scenarios.json`)
+
+`logic.test.mjs` unit-tests pure front-end functions; it does **not** exercise
+the hub runtime, so it cannot prove your `row_policies`, `publishes`, or named
+queries actually behave as intended end-to-end. The hub's Layer 2b
+**app-exercise** suite already runs a universal pass over every app (installs
+it, drives each declared capability against the real runtime, and asserts the
+generic per-policy-kind security invariants) — you get that for free with no
+per-app files.
+
+For behavior the universal pass can't infer — private-visibility isolation,
+couple/party scoping, event→query flows, protocol lifecycles — add an optional
+`scenarios.json` **next to `manifest.json`**. Each scenario declares members by
+role and a list of steps replayed against the real runtime; expectations are
+checked against the result. `build.mjs` ships it in the bundle, and the hub's
+nightly fan-in replays it against your published bundle. `contract-ci` lints the
+file's shape and references (declared events / named SQL / member aliases) in
+your app's own CI — no hub install needed — so a broken spec fails fast.
+
+```jsonc
+{
+  "scenarios": [
+    {
+      "name": "private items are hidden from non-owners; shared items are visible",
+      "members": { "owner": "adult", "other": "adult" },
+      "steps": [
+        // seedRaw bypasses row policies — for setting up endpoint_only /
+        // protocol-managed tables (e.g. partner_config) the app can't write.
+        { "action": "seedRaw", "sql": "INSERT INTO app_x__partner_config (member_id, partner_id) VALUES (?, ?)", "params": ["{{owner}}", "{{other}}"] },
+        // db/named/publish/store/context steps run AS a member, THROUGH policies.
+        { "action": "db", "as": "owner", "sql": "INSERT INTO app_x__items (id, member_id, visibility) VALUES (?, ?, ?)", "params": ["i1", "{{owner}}", "private"], "expect": { "status": 200 } },
+        { "action": "db", "as": "other", "sql": "SELECT id FROM app_x__items", "expect": { "status": 200, "rowCount": 0 } }
+      ]
+    }
+  ]
+}
+```
+
+Step actions: `seedRaw` (policy-bypassing setup), `db`, `named`
+(`{kind, name}` ai_access SQL), `publish` (`{type, subject_id?, payload?}`),
+`store` (`{method, key?, value?}`), `context` (`{keys}`). `as` names a member
+from `members` (defaults to the first); `{{alias}}` interpolates that member's
+id into `params`/`value`. `expect` supports `status`, `rowCount`, `rowsContain`
+(subset match), and `errorIncludes`. The schema is `ScenariosFileSchema` in the
+hub's `@chickadee/hub-contract`. Reference examples: `tasks/scenarios.json`
+(private-visibility) and `couples-bucket-list/scenarios.json` (couple scoping).
+
 ## Demo mode
 
 When `DB` and `CONTEXT` are empty strings (local development or demo), the app should work with hardcoded demo data. Never crash or show an error when these are missing — show sample data instead.
