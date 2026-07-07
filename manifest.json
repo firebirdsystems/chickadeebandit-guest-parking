@@ -1,47 +1,69 @@
 {
-  "id": "potluck",
-  "name": "Potluck",
+  "id": "guest-parking",
+  "name": "Guest Parking Passes",
   "version": "1.0.0",
-  "description": "Create gatherings with dish slots and let members claim, swap, and release dishes without overbooking a category.",
+  "description": "The board sets how many guest parking passes are available each night; residents claim an open pass first-come, and can release or move it. Atomic capacity claims keep the lot from being overbooked.",
   "entrypoint": "index.html",
   "runtime": "static",
-  "category": "family",
-  "tags": ["food", "events", "potluck", "slot-claims"],
+  "category": "organization",
+  "tags": ["hoa", "parking", "guest", "passes", "reservations", "slot-claims"],
   "data_access": {
-    "reads": ["family.members"],
-    "writes": ["family.members"]
+    "reads": ["family.members", "family.groups"],
+    "writes": []
   },
   "permissions": {
     "default_audience": "everyone",
     "requires_approval": false
   },
   "storage": "db",
+  "db_plaintext_columns": ["capacity", "guest_name", "vehicle"],
   "row_policies": {
-    "events": {
-      "kind": "adult_writable"
-    },
-    "slots": {
-      "kind": "adult_writable"
+    "nights": {
+      "kind": "owner_or_visibility",
+      "member_column": "created_by",
+      "visibility_column": "status",
+      "everyone_values": ["open", "closed"],
+      "privileged_groups": [
+        { "settings_table": "settings", "settings_key": "board_group_id" }
+      ],
+      "write_privileged_only": true
     },
     "claims": {
-      "kind": "owner_only",
-      "member_column": "member_id",
-      "adults_bypass": true,
-      "unique_per_member": {
-        "member_column": "member_id",
-        "scope_columns": ["event_id", "slot_id"]
-      }
+      "kind": "endpoint_only",
+      "read": "everyone"
+    },
+    "settings": {
+      "kind": "app_config"
     }
   },
-  "publishes": ["potluck.event_created", "potluck.slot_claimed", "potluck.slot_released"],
-  "nav": { "label": "Potluck" },
+  "admin_config": {
+    "settings_table": "settings",
+    "keys": ["board_group_id", "default_capacity"]
+  },
+  "slot_claims": {
+    "slot_table": "nights",
+    "slot_id_column": "id",
+    "capacity_column": "capacity",
+    "slot_status_column": "status",
+    "slot_open_values": ["open"],
+    "claims_table": "claims",
+    "claim_id_column": "id",
+    "slot_fk_column": "night_id",
+    "member_column": "member_id",
+    "created_at_column": "claimed_at",
+    "one_claim_per_member": true,
+    "allow_release": true,
+    "allowed_columns": ["guest_name", "vehicle"],
+    "max_text_lengths": { "guest_name": 120, "vehicle": 80 }
+  },
+  "nav": { "label": "Guest Parking" },
   "resource_limits": {
     "max_db_bytes": 52428800
   },
-  "icon": "🍽️",
+  "icon": "🅿️",
   "ai_access": {
     "allowed": true,
     "mode": "read",
-    "db_exports": ["upcoming_potlucks", "claim_summary"]
+    "db_exports": ["upcoming_nights", "claimed_passes"]
   }
 }

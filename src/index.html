@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Potluck</title>
+  <title>Guest Parking Passes</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -27,52 +27,37 @@
       --shadow: 0 1px 3px rgba(15, 23, 42, .07);
     }
     body {
-      min-height: 100vh;
-      background: var(--bg);
-      color: var(--text);
+      min-height: 100vh; background: var(--bg); color: var(--text);
       font-family: var(--hub-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-      font-size: var(--hub-font-size, 15px);
-      line-height: 1.5;
+      font-size: var(--hub-font-size, 15px); line-height: 1.5;
     }
-    .app { max-width: 820px; margin: 0 auto; padding: 16px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .app { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
     h1 { font-size: 1.35rem; line-height: 1.2; }
     h2 { font-size: 1rem; margin-bottom: 10px; }
+    h3 { font-size: 1.05rem; margin-bottom: 12px; }
     .muted { color: var(--muted); }
     .tiny { font-size: .78rem; }
     .stack { display: grid; gap: 12px; }
-    .grid { display: grid; gap: 12px; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 14px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px;
     }
-    .event-card { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
-    .event-card:hover { border-color: var(--border-mid); box-shadow: 0 5px 14px rgba(15, 23, 42, .08); }
-    .event-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .event-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .event-title { font-weight: 750; font-size: 1rem; }
-    .event-meta { margin-top: 3px; color: var(--muted); font-size: .82rem; }
-    .progress { height: 8px; overflow: hidden; border-radius: 999px; background: #eef2f7; margin-top: 10px; }
+    .night-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .night-date { font-weight: 750; font-size: 1.02rem; }
+    .night-meta { margin-top: 2px; color: var(--muted); font-size: .82rem; }
+    .progress { height: 8px; overflow: hidden; border-radius: 999px; background: #eef2f7; margin: 10px 0 4px; }
     .progress > span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
     .pill {
-      display: inline-flex; align-items: center; justify-content: center;
-      min-height: 24px; padding: 2px 8px; border-radius: 999px;
-      background: #f1f5f9; color: var(--muted); font-size: .74rem; font-weight: 700; white-space: nowrap;
+      display: inline-flex; align-items: center; justify-content: center; min-height: 24px;
+      padding: 2px 9px; border-radius: 999px; background: #f1f5f9; color: var(--muted);
+      font-size: .74rem; font-weight: 700; white-space: nowrap;
     }
     .pill.good { background: var(--green-soft); color: var(--green); }
     .pill.warn { background: var(--amber-soft); color: var(--amber); }
+    .pill.full { background: var(--red-soft); color: var(--red); }
     .pill.info { background: var(--blue-soft); color: #1d4ed8; }
-    .tabs { display: flex; gap: 4px; background: var(--border); padding: 3px; border-radius: 10px; margin-bottom: 14px; }
-    .tab { flex: 1; border: 0; border-radius: 8px; background: transparent; color: var(--muted); padding: 7px; font-weight: 700; cursor: pointer; }
-    .tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
-    .section-head {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 10px; margin: 6px 2px 10px;
-    }
-    .section-head h2 { margin-bottom: 0; }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       border: 1px solid transparent; border-radius: 8px; padding: 8px 12px;
@@ -85,106 +70,87 @@
     .btn-ghost:hover { background: #f8fafc; }
     .btn-danger { background: var(--red-soft); color: var(--red); border-color: transparent; }
     .btn-danger:hover { background: #fecaca; }
-    .btn-quiet-danger {
-      min-height: 28px; padding: 3px 6px; background: transparent; color: var(--muted);
-      border: 0; font-size: .76rem; font-weight: 700;
-    }
-    .btn-quiet-danger:hover { background: var(--red-soft); color: var(--red); }
     .btn-sm { min-height: 31px; padding: 5px 9px; font-size: .78rem; }
-    .back { margin-bottom: 10px; }
-    .slot {
-      display: grid; gap: 10px; padding: 12px 0; border-top: 1px solid var(--border);
-    }
-    .slot:first-child { border-top: 0; padding-top: 0; }
-    .slot-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .slot-name { font-weight: 750; }
-    .claims { display: flex; flex-wrap: wrap; gap: 6px; }
+    .claims { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .claim-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #f8fafc; border: 1px solid var(--border);
-      border-radius: 999px; padding: 3px 8px 3px 4px; font-size: .78rem;
+      display: inline-flex; align-items: center; gap: 6px; background: #f8fafc;
+      border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px 3px 4px; font-size: .78rem;
     }
+    .claim-chip.mine { background: var(--blue-soft); border-color: #bfdbfe; }
     .avatar {
-      width: 22px; height: 22px; border-radius: 50%;
-      display: inline-flex; align-items: center; justify-content: center;
-      color: white; font-size: .72rem; font-weight: 800; background: #0f766e;
+      width: 22px; height: 22px; border-radius: 50%; display: inline-flex;
+      align-items: center; justify-content: center; color: white; font-size: .72rem; font-weight: 800; background: #0f766e;
     }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .form { display: grid; gap: 10px; }
     .field { display: grid; gap: 4px; }
     label { font-size: .76rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 800; }
-    input, textarea {
+    input, select {
       width: 100%; border: 1.5px solid var(--border-mid); border-radius: 8px;
       padding: 9px 11px; font: inherit; background: var(--surface); color: var(--text);
     }
-    textarea { min-height: 72px; resize: vertical; }
-    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-    .slot-builder { display: grid; gap: 8px; }
-    .slot-row { display: grid; grid-template-columns: 1fr 74px auto; gap: 8px; align-items: center; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
     .empty, .loading { color: var(--muted); text-align: center; padding: 32px 16px; }
     .error { background: var(--red-soft); color: var(--red); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
     .notice { background: var(--amber-soft); color: var(--amber); padding: 9px 12px; border-radius: 8px; margin-bottom: 10px; font-size: .86rem; }
-    @media (min-width: 700px) {
-      .grid.two { grid-template-columns: 1fr 1fr; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 2px 10px; }
+    .section-head h2 { margin-bottom: 0; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, .45);
+      display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50;
     }
-    @media (max-width: 560px) {
-      .topbar, .event-head, .slot-top { align-items: stretch; flex-direction: column; }
-      .slot-row { grid-template-columns: 1fr; }
-      .actions .btn { flex: 1; }
+    .modal {
+      background: var(--surface); border-radius: 12px; padding: 18px; width: 100%;
+      max-width: 440px; box-shadow: 0 20px 40px rgba(15, 23, 42, .25); max-height: 90vh; overflow-y: auto;
+    }
+    .modal .field { margin-bottom: 12px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+    .board-tools { display: grid; gap: 8px; }
+    .grid2 { display: grid; grid-template-columns: 1fr 96px; gap: 8px; }
+    @media (max-width: 520px) {
+      .night-head { flex-direction: column; align-items: stretch; }
+      .grid2 { grid-template-columns: 1fr; }
     }
   </style>
-  <base href="/run/potluck/">
+  <base href="/run/guest-parking/">
 </head>
 <body>
 <div class="app">
-  <div id="root" class="loading">Loading...</div>
+  <div id="root" class="loading">Loading…</div>
 </div>
 
 <script type="module">
-import { esc, isAdult, memberColor, initial, hubConfirm } from "/hub-sdk.js";
+import { esc, memberColor, initial, hubConfirm, hubAlert } from "/hub-sdk.js";
+import {
+  toISODate, addDays, relativeDay, fromISODate,
+  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard,
+} from "./logic.js";
 
-const CONTEXT = window.__CONTEXT_URL ?? "";
-const DB = window.__DB_URL ?? "";
-const HUB_MEMBER = window.__CURRENT_MEMBER ?? null;
+const CONTEXT          = window.__CONTEXT_URL      ?? "";
+const DB               = window.__DB_URL           ?? "";
+const ADMIN_CONFIG_URL = window.__ADMIN_CONFIG_URL ?? "";
+const CLAIM_URL        = window.__CLAIM_URL         ?? "";
+const RELEASE_URL      = window.__RELEASE_URL       ?? "";
+const ME       = window.__CURRENT_MEMBER ?? null;
+const IS_ADMIN = !!window.__IS_ADMIN;
 
 let members = [];
-let currentMember = null;
-let events = [];
-let slots = [];
+let memberMap = new Map();
+let groups = [];
+let settings = { board_group_id: null, default_capacity: 2 };
+let nights = [];
 let claims = [];
-let selectedEventId = null;
-let view = "upcoming";
 let error = "";
 let notice = "";
-let draftSlots = [
-  { name: "Turkey", capacity: 1 },
-  { name: "Sides", capacity: 4 },
-  { name: "Desserts", capacity: 2 },
-];
+let modalEl = null;
+let currentClaimNightId = null;
 
-function nowIso() { return new Date().toISOString(); }
-function uid(prefix) { return `${prefix}-${crypto.randomUUID()}`; }
-function today() { return new Date().toISOString().slice(0, 10); }
-function fmtDate(value) {
-  if (!value) return "";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" })
-    .format(new Date(`${value}T12:00:00`));
-}
-function memberById(id) { return members.find(m => m.id === id) ?? null; }
-function canCreate() { return isAdult(currentMember); }
-function selectedEvent() { return events.find(e => e.id === selectedEventId) ?? null; }
-function eventSlots(eventId) { return slots.filter(s => s.event_id === eventId).sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)); }
-function slotClaims(slotId) { return claims.filter(c => c.slot_id === slotId).sort((a, b) => a.claimed_at.localeCompare(b.claimed_at)); }
-function myClaim(slotId) { return claims.find(c => c.slot_id === slotId && c.member_id === currentMember?.id) ?? null; }
-function claimedCount(slotId) { return slotClaims(slotId).length; }
-function eventTotals(eventId) {
-  const ss = eventSlots(eventId);
-  const capacity = ss.reduce((sum, s) => sum + Number(s.capacity || 0), 0);
-  const claimed = ss.reduce((sum, s) => sum + claimedCount(s.id), 0);
-  return { claimed, capacity, pct: capacity ? Math.min(100, Math.round((claimed / capacity) * 100)) : 0 };
-}
+const nowIso = () => new Date().toISOString();
+const uid = (p) => `${p}-${crypto.randomUUID()}`;
+const today = () => toISODate(new Date());
 
-async function dbq(sql, params = []) {
+function isBoard() { return _isBoard(ME, groups, settings.board_group_id); }
+function boardConfigured() { return !!settings.board_group_id && !!(groups.find(g => g.id === settings.board_group_id)); }
+
+async function db(sql, params = []) {
   if (!DB) return { rows: [] };
   const res = await fetch(DB, {
     method: "POST",
@@ -196,384 +162,467 @@ async function dbq(sql, params = []) {
   return json;
 }
 
-async function loadMembers() {
-  if (!CONTEXT) {
-    members = [
-      { id: "demo-1", name: "Alex", role: "adult" },
-      { id: "demo-2", name: "Jordan", role: "adult" },
-      { id: "demo-3", name: "Casey", role: "child" },
-      { id: "demo-4", name: "Riley", role: "child" },
-    ];
-  } else {
-    const res = await fetch(`${CONTEXT}?keys=family.members`);
-    members = ((await res.json())["family.members"]) ?? [];
+async function slotCall(url, body, label) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) {
+    const reason = json.reason;
+    const msg = reason === "slot_full" ? "That night is fully booked."
+      : reason === "already_claimed" ? "You already hold a pass for that night."
+      : reason === "slot_closed" ? "That night is no longer open for passes."
+      : (json.error || `${label} failed.`);
+    throw Object.assign(new Error(msg), { reason });
   }
-  currentMember = HUB_MEMBER ?? members[0] ?? { id: "guest", name: "Guest", role: "adult" };
+  return json;
 }
 
-async function seedDemo() {
-  if (DB) return;
-  const eventId = "demo-thanksgiving";
-  events = [{
-    id: eventId, title: "Thanksgiving Dinner", date: today(), location: "Home",
-    notes: "Claim what you are bringing so the table balances out.",
-    created_by_id: "demo-1", created_by_name: "Alex", created_at: nowIso(), archived: 0,
-  }];
-  slots = [
-    { id: "slot-turkey", event_id: eventId, name: "Turkey", capacity: 1, sort_order: 0 },
-    { id: "slot-sides", event_id: eventId, name: "Sides", capacity: 4, sort_order: 1 },
-    { id: "slot-desserts", event_id: eventId, name: "Desserts", capacity: 2, sort_order: 2 },
-  ];
-  claims = [{ id: "claim-1", event_id: eventId, slot_id: "slot-desserts", member_id: "demo-2", member_name: "Jordan", note: "Apple pie", claimed_at: nowIso() }];
+async function saveSetting(key, value) {
+  const res = await fetch(ADMIN_CONFIG_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? "Save failed");
+  }
+}
+
+// ── Loading ───────────────────────────────────────────────────────────────────
+
+async function loadContext() {
+  if (!CONTEXT) {
+    members = [
+      { id: "demo-1", name: "Alex",   role: "adult" },
+      { id: "demo-2", name: "Jordan", role: "adult" },
+      { id: "demo-3", name: "Sam",    role: "adult" },
+    ];
+    groups = [{ id: "board", name: "Board", memberIds: ["demo-1"] }];
+    memberMap = new Map(members.map(m => [m.id, m]));
+    return;
+  }
+  try {
+    const res = await fetch(`${CONTEXT}?keys=family.members,family.groups`);
+    const data = await res.json();
+    members = data["family.members"] ?? [];
+    groups  = data["family.groups"]  ?? [];
+  } catch { members = []; groups = []; }
+  memberMap = new Map(members.map(m => [m.id, m]));
+}
+
+async function loadSettings() {
+  if (!DB) { settings = { board_group_id: "board", default_capacity: 2 }; return; }
+  try {
+    const { rows } = await db(`SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')`);
+    for (const r of rows) {
+      if (r.key === "board_group_id") settings.board_group_id = r.value || null;
+      if (r.key === "default_capacity") settings.default_capacity = Math.max(0, Number(r.value) || 2);
+    }
+  } catch { /* leave defaults */ }
 }
 
 async function loadData() {
-  if (!DB) { await seedDemo(); return; }
-  const [eventRows, slotRows, claimRows] = await Promise.all([
-    dbq("SELECT * FROM app_potluck__events WHERE archived = 0 ORDER BY date ASC, created_at ASC"),
-    dbq("SELECT * FROM app_potluck__slots ORDER BY sort_order ASC, name ASC"),
-    dbq("SELECT * FROM app_potluck__claims ORDER BY claimed_at ASC"),
+  if (!DB) { seedDemo(); return; }
+  const [nightRows, claimRows] = await Promise.all([
+    db(`SELECT * FROM app_guest_parking__nights WHERE date >= ? ORDER BY date ASC`, [today()]),
+    db(`SELECT * FROM app_guest_parking__claims ORDER BY claimed_at ASC`),
   ]);
-  events = eventRows.rows.map(e => ({ ...e, archived: !!e.archived }));
-  slots = slotRows.rows;
+  nights = nightRows.rows;
   claims = claimRows.rows;
+}
+
+function seedDemo() {
+  nights = [
+    { id: "n1", date: today(),            capacity: 2, status: "open",   note: "", created_by: "demo-1" },
+    { id: "n2", date: addDays(today(),1), capacity: 3, status: "open",   note: "Holiday weekend", created_by: "demo-1" },
+    { id: "n3", date: addDays(today(),2), capacity: 2, status: "closed", note: "Lot resurfacing", created_by: "demo-1" },
+  ];
+  claims = [
+    { id: "c1", night_id: "n1", member_id: "demo-2", guest_name: "The Patels", vehicle: "Blue Subaru · ABC-1234", claimed_at: nowIso() },
+    { id: "c2", night_id: "n2", member_id: "demo-3", guest_name: "Grandma Lee", vehicle: "Silver Camry", claimed_at: nowIso() },
+  ];
 }
 
 async function refresh() {
   clearMessages();
   try {
-    await loadMembers();
+    await Promise.all([loadContext(), loadSettings()]);
     await loadData();
-    if (selectedEventId && !events.some(e => e.id === selectedEventId)) selectedEventId = null;
     render();
-  } catch (e) {
-    error = e.message;
-    render();
-  }
+  } catch (e) { error = e.message; render(); }
 }
+
+// ── Messages ───────────────────────────────────────────────────────────────────
 
 function clearMessages() { error = ""; notice = ""; }
-function showError(message) { error = message; notice = ""; render(); }
-function showNotice(message) { notice = message; error = ""; render(); }
+function showError(m) { error = m; notice = ""; render(); }
+function showNotice(m) { notice = m; error = ""; render(); }
 
-async function createEvent(form) {
-  if (!canCreate()) return showError("Only adults and leadership can create potlucks.");
-  const title = form.title.value.trim();
-  const date = form.date.value;
-  const location = form.location.value.trim();
-  const notes = form.notes.value.trim();
-  const cleanSlots = draftSlots
-    .map((s, index) => ({ ...s, name: s.name.trim(), capacity: Math.max(1, Number(s.capacity) || 1), sort_order: index }))
-    .filter(s => s.name);
-  if (!title || !date || cleanSlots.length === 0) return showError("Add a title, date, and at least one dish slot.");
+// ── Resident actions ───────────────────────────────────────────────────────────
 
-  const event = {
-    id: uid("potluck"), title, date, location, notes,
-    created_by_id: currentMember.id, created_by_name: currentMember.name, created_at: nowIso(), archived: 0,
-  };
-  const eventSlotsToInsert = cleanSlots.map(s => ({ ...s, id: uid("slot"), event_id: event.id, created_at: nowIso() }));
-
-  try {
-    if (DB) {
-      await dbq(
-        `INSERT INTO app_potluck__events (id, title, date, location, notes, created_by_id, created_by_name, created_at, archived)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-        [event.id, event.title, event.date, event.location, event.notes, event.created_by_id, event.created_by_name, event.created_at]
-      );
-      for (const s of eventSlotsToInsert) {
-        await dbq(
-          `INSERT INTO app_potluck__slots (id, event_id, name, capacity, sort_order, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [s.id, s.event_id, s.name, s.capacity, s.sort_order, s.created_at]
-        );
-      }
-    }
-    events = [...events, event].sort((a, b) => a.date.localeCompare(b.date));
-    slots = [...slots, ...eventSlotsToInsert];
-    selectedEventId = event.id;
-    view = "upcoming";
-    showNotice("Potluck created.");
-  } catch (e) {
-    showError(e.message);
+async function claimNight(nightId, guestName, vehicle) {
+  const night = nights.find(n => n.id === nightId);
+  if (!night || !ME) return;
+  if (!DB) {
+    if (myClaim(claims, nightId, ME.id)) return showError("You already hold a pass for that night.");
+    if (remaining(night, claims) <= 0) return showError("That night is fully booked.");
+    claims = [...claims, { id: uid("claim"), night_id: nightId, member_id: ME.id, guest_name: guestName, vehicle, claimed_at: nowIso() }];
+    closeModal(); showNotice("Guest pass claimed."); return;
   }
-}
-
-async function claimSlot(slotId) {
-  const slot = slots.find(s => s.id === slotId);
-  if (!slot || !currentMember) return false;
-  if (myClaim(slotId)) { showError("You already claimed this slot."); return false; }
-  if (claimedCount(slotId) >= Number(slot.capacity)) { showError("That slot is already full."); return false; }
-  const claim = {
-    id: uid("claim"), event_id: slot.event_id, slot_id: slot.id,
-    member_id: currentMember.id, member_name: currentMember.name, note: "", claimed_at: nowIso(),
-  };
   try {
-    if (DB) {
-      const result = await dbq(
-        `INSERT INTO app_potluck__claims (id, event_id, slot_id, member_id, member_name, note, claimed_at)
-         SELECT ?, ?, ?, ?, ?, ?, ?
-         WHERE (SELECT COUNT(*) FROM app_potluck__claims WHERE slot_id = ?) <
-               (SELECT capacity FROM app_potluck__slots WHERE id = ?)
-           AND NOT EXISTS (
-             SELECT 1 FROM app_potluck__claims WHERE slot_id = ? AND member_id = ?
-           )`,
-        [claim.id, claim.event_id, claim.slot_id, claim.member_id, claim.member_name, claim.note, claim.claimed_at, slot.id, slot.id, slot.id, currentMember.id]
-      );
-      if (result.meta?.changes === 0) throw new Error("Someone just claimed the last opening. Refreshing the list.");
-    }
-    claims = [...claims, claim];
-    showNotice(`Claimed ${slot.name}.`);
-    return true;
+    const { claim_id } = await slotCall(CLAIM_URL, { slot_id: nightId, guest_name: guestName, vehicle }, "Claim");
+    claims = [...claims, { id: claim_id, night_id: nightId, member_id: ME.id, guest_name: guestName, vehicle, claimed_at: nowIso() }];
+    closeModal();
+    showNotice("Guest pass claimed.");
   } catch (e) {
     await loadData().catch(() => {});
     showError(e.message);
-    return false;
   }
 }
 
-async function releaseClaim(claimId) {
-  const claim = claims.find(c => c.id === claimId);
-  if (!claim) return false;
-  const allowed = claim.member_id === currentMember?.id || canCreate();
-  if (!allowed) { showError("You can only release your own claim."); return false; }
-  try {
-    if (DB) await dbq("DELETE FROM app_potluck__claims WHERE id = ?", [claimId]);
-    claims = claims.filter(c => c.id !== claimId);
-    showNotice("Dish released.");
-    return true;
-  } catch (e) {
-    showError(e.message);
-    return false;
-  }
-}
-
-async function swapTo(slotId) {
-  const eventId = selectedEventId;
-  const own = claims.find(c => c.event_id === eventId && c.member_id === currentMember?.id);
-  if (!own) return claimSlot(slotId);
-  if (own.slot_id === slotId) return;
-  const ok = await hubConfirm("Move your claim to this dish slot?");
+async function releaseNight(nightId) {
+  const mine = myClaim(claims, nightId, ME?.id);
+  if (!mine) return;
+  const ok = await hubConfirm({ message: "Release your guest pass for this night?", confirmLabel: "Release", destructive: true });
   if (!ok) return;
-  const oldClaimId = own.id;
-  const claimedNewSlot = await claimSlot(slotId);
-  if (claimedNewSlot) await releaseClaim(oldClaimId);
+  if (!DB) { claims = claims.filter(c => c.id !== mine.id); showNotice("Pass released."); return; }
+  try {
+    await slotCall(RELEASE_URL, { slot_id: nightId }, "Release");
+    claims = claims.filter(c => c.id !== mine.id);
+    showNotice("Pass released.");
+  } catch (e) { await loadData().catch(() => {}); showError(e.message); }
 }
 
-async function archiveEvent(eventId) {
-  if (!canCreate()) return showError("Only adults and leadership can archive potlucks.");
+// ── Board actions (nights are write_privileged_only) ────────────────────────────
+
+async function createNight(date, capacity, note) {
+  const night = { id: uid("night"), date, capacity, status: "open", note, created_by: ME.id, created_at: nowIso(), updated_at: nowIso() };
+  if (DB) {
+    await db(
+      `INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, 'open', ?, ?, ?, ?)`,
+      [night.id, night.date, night.capacity, night.note, night.created_by, night.created_at, night.updated_at]
+    );
+  }
+  nights = [...nights.filter(n => n.date !== date), night].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function submitNightForm(form) {
+  if (!isBoard()) return showError("Only the board can open parking nights.");
+  const date = form.date.value;
+  const capacity = Math.max(0, Number(form.capacity.value) || 0);
+  const note = form.note.value.trim();
+  const rangeEnd = form.range_end.value;
+  if (!date) return showError("Choose a date.");
+  try {
+    if (rangeEnd && rangeEnd > date) {
+      let cur = date, made = 0;
+      while (cur <= rangeEnd && made < 120) {
+        if (!nights.some(n => n.date === cur)) { await createNight(cur, capacity, note); made++; }
+        cur = addDays(cur, 1);
+      }
+      closeModal(); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
+    } else {
+      if (nights.some(n => n.date === date)) { showError("That night already exists — edit it instead."); return; }
+      await createNight(date, capacity, note);
+      closeModal(); showNotice("Parking night opened.");
+    }
+  } catch (e) { showError(e.message); }
+}
+
+async function updateCapacity(nightId, capacity) {
+  const night = nights.find(n => n.id === nightId);
+  if (!night) return;
+  if (DB) await db(`UPDATE app_guest_parking__nights SET capacity = ?, updated_at = ? WHERE id = ?`, [capacity, nowIso(), nightId]);
+  nights = nights.map(n => n.id === nightId ? { ...n, capacity } : n);
+  closeModal();
+  showNotice("Capacity updated.");
+}
+
+async function toggleNight(nightId) {
+  const night = nights.find(n => n.id === nightId);
+  if (!night) return;
+  const next = night.status === "open" ? "closed" : "open";
+  try {
+    if (DB) await db(`UPDATE app_guest_parking__nights SET status = ?, updated_at = ? WHERE id = ?`, [next, nowIso(), nightId]);
+    nights = nights.map(n => n.id === nightId ? { ...n, status: next } : n);
+    showNotice(next === "closed" ? "Night closed to new passes." : "Night reopened.");
+  } catch (e) { showError(e.message); }
+}
+
+async function deleteNight(nightId) {
+  const held = claimedCount(claims, nightId);
   const ok = await hubConfirm({
-    message: "Archive this potluck?",
-    description: "It will be hidden from the active gathering list. Existing claims are preserved.",
-    confirmLabel: "Archive",
-    destructive: true,
+    message: "Delete this parking night?",
+    description: held ? `${held} claimed pass${held === 1 ? "" : "es"} will be removed.` : "This removes the night from the schedule.",
+    confirmLabel: "Delete", destructive: true,
   });
   if (!ok) return;
   try {
-    if (DB) await dbq("UPDATE app_potluck__events SET archived = 1 WHERE id = ?", [eventId]);
-    events = events.filter(e => e.id !== eventId);
-    selectedEventId = null;
-    showNotice("Potluck archived.");
-  } catch (e) {
-    showError(e.message);
-  }
+    if (DB) await db(`DELETE FROM app_guest_parking__nights WHERE id = ?`, [nightId]);
+    nights = nights.filter(n => n.id !== nightId);
+    claims = claims.filter(c => c.night_id !== nightId);
+    showNotice("Parking night deleted.");
+  } catch (e) { showError(e.message); }
 }
 
-function addDraftSlot() {
-  draftSlots.push({ name: "", capacity: 1 });
-  render();
+// ── Modals ──────────────────────────────────────────────────────────────────────
+
+function openModal(html) {
+  closeModal();
+  modalEl = document.createElement("div");
+  modalEl.className = "modal-backdrop";
+  modalEl.innerHTML = `<div class="modal">${html}</div>`;
+  modalEl.addEventListener("click", (e) => { if (e.target === modalEl) closeModal(); });
+  document.body.appendChild(modalEl);
+  const first = modalEl.querySelector("[data-autofocus]");
+  if (first) first.focus();
 }
-function updateDraft(index, field, value) {
-  draftSlots[index][field] = field === "capacity" ? Math.max(1, Number(value) || 1) : value;
-}
-function removeDraft(index) {
-  draftSlots.splice(index, 1);
-  if (!draftSlots.length) addDraftSlot();
-  render();
-}
+function closeModal() { modalEl?.remove(); modalEl = null; }
+window.closeModal = closeModal;
+
+window.openClaimModal = function (nightId) {
+  const night = nights.find(n => n.id === nightId);
+  if (!night) return;
+  openModal(`
+    <h3>🅿️ Claim a guest pass</h3>
+    <p class="muted tiny" style="margin-bottom:12px">${esc(relativeDay(night.date, today()))} — ${remaining(night, claims)} of ${esc(String(night.capacity))} pass${night.capacity === 1 ? "" : "es"} open.</p>
+    <form id="claim-form">
+      <div class="field">
+        <label for="c-guest">Guest name <span style="text-transform:none;font-weight:600">(optional)</span></label>
+        <input id="c-guest" name="guest_name" maxlength="120" placeholder="Who's visiting?" data-autofocus />
+      </div>
+      <div class="field">
+        <label for="c-vehicle">Vehicle <span style="text-transform:none;font-weight:600">(optional)</span></label>
+        <input id="c-vehicle" name="vehicle" maxlength="80" placeholder="Make / color / plate" />
+      </div>
+      <p class="muted tiny" style="margin-bottom:10px">Visible to residents and the board so the gate knows who's expected.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Claim pass</button>
+      </div>
+    </form>`);
+};
+
+window.openAddNightModal = function () {
+  openModal(`
+    <h3>Open a parking night</h3>
+    <form id="night-form">
+      <div class="field">
+        <label for="n-date">Date</label>
+        <input id="n-date" name="date" type="date" value="${today()}" min="${today()}" required data-autofocus />
+      </div>
+      <div class="field">
+        <label for="n-cap">Passes available</label>
+        <input id="n-cap" name="capacity" type="number" min="0" max="99" value="${esc(String(settings.default_capacity))}" required />
+      </div>
+      <div class="field">
+        <label for="n-note">Note <span style="text-transform:none;font-weight:600">(optional)</span></label>
+        <input id="n-note" name="note" maxlength="120" placeholder="e.g. Holiday weekend" />
+      </div>
+      <div class="field">
+        <label for="n-range">Repeat through <span style="text-transform:none;font-weight:600">(optional)</span></label>
+        <input id="n-range" name="range_end" type="date" min="${today()}" />
+        <span class="muted tiny">Leave blank for a single night, or pick an end date to open the same number of passes for every night in the range.</span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Open night</button>
+      </div>
+    </form>`);
+};
+
+window.openEditNightModal = function (nightId) {
+  const night = nights.find(n => n.id === nightId);
+  if (!night) return;
+  const held = claimedCount(claims, night.id);
+  openModal(`
+    <h3>Edit ${esc(relativeDay(night.date, today()))}</h3>
+    <form id="edit-form" data-night="${esc(night.id)}">
+      <div class="field">
+        <label for="e-cap">Passes available</label>
+        <input id="e-cap" name="capacity" type="number" min="${held}" max="99" value="${esc(String(night.capacity))}" required data-autofocus />
+        ${held ? `<span class="muted tiny">${held} already claimed — capacity can't go below that.</span>` : ""}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>`);
+};
+
+window.openSettingsModal = function () {
+  const opts = groups.map(g => `<option value="${esc(g.id)}" ${settings.board_group_id === g.id ? "selected" : ""}>${esc(g.name)}</option>`).join("");
+  const controls = IS_ADMIN ? `
+    <div class="field">
+      <label for="s-group">Board group</label>
+      <select id="s-group">
+        <option value="" ${!settings.board_group_id ? "selected" : ""}>— No board configured —</option>
+        ${opts}
+      </select>
+      <span class="muted tiny">${!boardConfigured() ? "⚠️ Pick a board group to enable opening nights and setting capacity — those actions are disabled until one is set." : "Only members of this group can open nights and set capacity."}</span>
+    </div>
+    <div class="field">
+      <label for="s-cap">Default passes per night</label>
+      <input id="s-cap" type="number" min="0" max="99" value="${esc(String(settings.default_capacity))}" />
+    </div>` : `
+    <p class="muted">Board group: <strong>${settings.board_group_id ? esc(groups.find(g => g.id === settings.board_group_id)?.name ?? settings.board_group_id) : "— none —"}</strong></p>
+    <p class="muted">Default passes per night: <strong>${esc(String(settings.default_capacity))}</strong></p>
+    <p class="tiny muted" style="margin-top:8px">Only a hub admin can change these settings.</p>`;
+  openModal(`
+    <h3>⚙️ Guest Parking settings</h3>
+    ${controls}
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Close</button>
+      ${IS_ADMIN ? `<button class="btn btn-primary" onclick="saveSettings()">Save</button>` : ""}
+    </div>`);
+};
+
+window.saveSettings = async function () {
+  const groupId = document.getElementById("s-group").value || null;
+  const cap = Math.max(0, Number(document.getElementById("s-cap").value) || 0);
+  const btn = modalEl?.querySelector(".modal-actions .btn-primary");
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    await Promise.all([
+      saveSetting("board_group_id", groupId ?? ""),
+      saveSetting("default_capacity", String(cap)),
+    ]);
+    settings.board_group_id = groupId;
+    settings.default_capacity = cap;
+    closeModal();
+    render();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+    showError(e.message);
+  }
+};
+
+// ── Render ──────────────────────────────────────────────────────────────────────
 
 function renderMessages() {
   return `${error ? `<div class="error">${esc(error)}</div>` : ""}${notice ? `<div class="notice">${esc(notice)}</div>` : ""}`;
 }
 
-function renderEventCard(event) {
-  const totals = eventTotals(event.id);
-  const statusClass = totals.capacity && totals.claimed >= totals.capacity ? "good" : totals.claimed ? "info" : "warn";
-  return `
-    <article class="card event-card" data-open-event="${esc(event.id)}">
-      <div class="event-head">
-        <div>
-          <div class="event-title">${esc(event.title)}</div>
-          <div class="event-meta">${esc(fmtDate(event.date))}${event.location ? ` · ${esc(event.location)}` : ""}</div>
-        </div>
-        <span class="pill ${statusClass}">${totals.claimed}/${totals.capacity} claimed</span>
-      </div>
-      ${event.notes ? `<p class="event-meta">${esc(event.notes)}</p>` : ""}
-      <div class="progress" aria-hidden="true"><span style="width:${totals.pct}%"></span></div>
-    </article>
-  `;
-}
-
-function renderList() {
-  const visible = [...events].sort((a, b) => a.date.localeCompare(b.date));
-  return `
-    <div class="topbar">
-      <div>
-        <h1>Potluck</h1>
-        <p class="muted tiny">Claim dishes without double-booking dessert.</p>
-      </div>
-      ${canCreate() ? `<button class="btn" data-view-create>Create</button>` : ""}
-    </div>
-    ${renderMessages()}
-    <div class="section-head">
-      <h2>Gatherings</h2>
-      <button class="btn btn-ghost btn-sm" type="button" data-refresh>Refresh</button>
-    </div>
-    <section class="stack">
-      ${visible.length ? visible.map(renderEventCard).join("") : `<div class="card empty">No potlucks yet.</div>`}
-    </section>
-  `;
-}
-
-function renderDetail() {
-  const event = selectedEvent();
-  if (!event) return renderList();
-  const totals = eventTotals(event.id);
-  const ownClaims = claims.filter(c => c.event_id === event.id && c.member_id === currentMember?.id);
-  return `
-    <button class="btn btn-ghost btn-sm back" data-back>Back</button>
-    ${renderMessages()}
-    <section class="card stack">
-      <div class="event-head">
-        <div>
-          <h1>${esc(event.title)}</h1>
-          <p class="muted">${esc(fmtDate(event.date))}${event.location ? ` · ${esc(event.location)}` : ""}</p>
-        </div>
-        <div class="event-tools">
-          <span class="pill ${totals.claimed >= totals.capacity ? "good" : "info"}">${totals.claimed}/${totals.capacity} spots</span>
-          ${canCreate() ? `<button class="btn btn-quiet-danger" data-archive="${esc(event.id)}">Archive</button>` : ""}
-        </div>
-      </div>
-      ${event.notes ? `<p>${esc(event.notes)}</p>` : ""}
-      ${ownClaims.length ? `<p class="muted tiny">You are bringing ${ownClaims.map(c => esc(slots.find(s => s.id === c.slot_id)?.name ?? "a dish")).join(", ")}.</p>` : ""}
-    </section>
-    <section class="card">
-      <h2>Dish slots</h2>
-      ${eventSlots(event.id).map(renderSlot).join("") || `<div class="empty">No dish slots yet.</div>`}
-    </section>
-  `;
-}
-
-function renderSlot(slot) {
-  const sc = slotClaims(slot.id);
-  const mine = myClaim(slot.id);
-  const full = sc.length >= Number(slot.capacity);
-  const hasAnyMine = claims.some(c => c.event_id === slot.event_id && c.member_id === currentMember?.id);
-  const claimButton = mine
-    ? `<button class="btn btn-danger btn-sm" data-release="${esc(mine.id)}">Release</button>`
-    : `<button class="btn btn-sm" data-claim="${esc(slot.id)}" ${full ? "disabled" : ""}>${hasAnyMine ? "Swap here" : "Claim"}</button>`;
-  return `
-    <div class="slot">
-      <div class="slot-top">
-        <div>
-          <div class="slot-name">${esc(slot.name)}</div>
-        </div>
-        <span class="pill ${full ? "good" : "warn"}">${sc.length}/${slot.capacity}</span>
-      </div>
-      <div class="claims">
-        ${sc.length ? sc.map(renderClaim).join("") : `<span class="muted tiny">Open spot</span>`}
-      </div>
-      <div class="actions">${mine ? claimButton : claimButton.replace("data-claim", hasAnyMine ? "data-swap" : "data-claim")}</div>
-    </div>
-  `;
-}
-
 function renderClaim(claim) {
-  const member = memberById(claim.member_id);
-  const color = memberColor(member?.id ?? claim.member_id);
+  const mine = claim.member_id === ME?.id;
+  const m = memberMap.get(claim.member_id);
+  const label = claim.guest_name || (mine ? "Your pass" : (m?.name ? `${m.name}'s guest` : "Guest"));
   return `
-    <span class="claim-chip">
-      <span class="avatar" style="background:${esc(color)}">${esc(initial(claim.member_name))}</span>
-      ${esc(claim.member_name)}
-    </span>
-  `;
+    <span class="claim-chip ${mine ? "mine" : ""}" title="Claimed by ${esc(m?.name ?? "resident")}">
+      <span class="avatar" style="background:${esc(memberColor(claim.member_id))}">${esc(initial(m?.name ?? "?"))}</span>
+      <span>${esc(label)}${claim.vehicle ? ` · ${esc(claim.vehicle)}` : ""}</span>
+    </span>`;
 }
 
-function renderCreate() {
+function renderNight(night) {
+  const held = claimedCount(claims, night.id);
+  const left = remaining(night, claims);
+  const pct = night.capacity ? Math.min(100, Math.round((held / night.capacity) * 100)) : 100;
+  const mine = myClaim(claims, night.id, ME?.id);
+  const closed = night.status === "closed";
+  const statusPill = closed ? `<span class="pill full">Closed</span>`
+    : left === 0 ? `<span class="pill full">Full</span>`
+    : `<span class="pill good">${left} open</span>`;
+
+  let action = "";
+  if (mine) {
+    action = `<button class="btn btn-danger btn-sm" data-release="${esc(night.id)}">Release my pass</button>`;
+  } else if (isClaimable(night, claims)) {
+    action = `<button class="btn btn-sm" data-claim="${esc(night.id)}">Claim a pass</button>`;
+  }
+
+  const boardTools = isBoard() ? `
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-ghost btn-sm" data-edit="${esc(night.id)}">Capacity</button>
+      <button class="btn btn-ghost btn-sm" data-toggle="${esc(night.id)}">${closed ? "Reopen" : "Close"}</button>
+      <button class="btn btn-ghost btn-sm" data-delete="${esc(night.id)}">Delete</button>
+    </div>` : "";
+
   return `
-    <button class="btn btn-ghost btn-sm back" data-view-list>Back</button>
-    <div class="topbar"><h1>Create Potluck</h1></div>
-    ${renderMessages()}
-    <form class="card form" id="create-form">
-      <div class="grid two">
-        <div class="field">
-          <label for="title">Gathering</label>
-          <input id="title" name="title" value="Holiday Dinner" required />
+    <article class="card">
+      <div class="night-head">
+        <div>
+          <div class="night-date">${esc(relativeDay(night.date, today()))}</div>
+          <div class="night-meta">${esc(String(night.capacity))} guest pass${night.capacity === 1 ? "" : "es"}${night.note ? ` · ${esc(night.note)}` : ""}</div>
         </div>
-        <div class="field">
-          <label for="date">Date</label>
-          <input id="date" name="date" type="date" value="${today()}" required />
-        </div>
+        <div class="row" style="justify-content:flex-end">${statusPill}${action}</div>
       </div>
-      <div class="field">
-        <label for="location">Location</label>
-        <input id="location" name="location" placeholder="Home, clubhouse, chapter hall" />
+      <div class="progress" aria-hidden="true"><span style="width:${pct}%;background:${left === 0 ? "var(--red)" : "var(--green)"}"></span></div>
+      <div class="claims">
+        ${held ? claims.filter(c => c.night_id === night.id).map(renderClaim).join("") : `<span class="muted tiny">No passes claimed yet.</span>`}
       </div>
-      <div class="field">
-        <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" placeholder="Theme, headcount, arrival window"></textarea>
-      </div>
-      <div class="field">
-        <label>Dish slots</label>
-        <div class="slot-builder">
-          ${draftSlots.map((s, i) => `
-            <div class="slot-row">
-              <input data-draft="${i}" data-field="name" value="${esc(s.name)}" placeholder="Dish category" />
-              <input data-draft="${i}" data-field="capacity" type="number" min="1" value="${esc(String(s.capacity))}" aria-label="Capacity" />
-              <button class="btn btn-ghost btn-sm" type="button" data-remove-draft="${i}">Remove</button>
-            </div>
-          `).join("")}
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn btn-ghost" type="button" data-add-slot>Add slot</button>
-        <button class="btn" type="submit">Create potluck</button>
-      </div>
-    </form>
-  `;
+      ${boardTools}
+    </article>`;
 }
 
 function render() {
   const root = document.getElementById("root");
   root.className = "app";
-  root.innerHTML = selectedEventId ? renderDetail() : view === "create" ? renderCreate() : renderList();
+  const upcoming = [...nights].sort((a, b) => a.date.localeCompare(b.date));
+  const boardBtn = isBoard()
+    ? `<button class="btn" onclick="openAddNightModal()">Open night</button>`
+    : "";
+  const boardNotConfigured = !boardConfigured()
+    ? `<div class="notice">No board group is configured yet, so no parking nights can be opened. ${IS_ADMIN ? `Use <strong>Settings</strong> to pick one.` : `Ask a hub admin to set one in Settings.`}</div>`
+    : "";
+
+  root.innerHTML = `
+    <div class="topbar">
+      <div>
+        <h1>🅿️ Guest Parking</h1>
+        <p class="muted tiny">Claim one of the community's guest passes for the night.</p>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        ${boardBtn}
+        <button class="btn btn-ghost btn-sm" onclick="openSettingsModal()">Settings</button>
+      </div>
+    </div>
+    ${renderMessages()}
+    ${boardNotConfigured}
+    <div class="section-head">
+      <h2>Upcoming nights</h2>
+      <button class="btn btn-ghost btn-sm" data-refresh>Refresh</button>
+    </div>
+    <section class="stack">
+      ${upcoming.length ? upcoming.map(renderNight).join("") : `<div class="card empty">No parking nights scheduled yet.</div>`}
+    </section>`;
 }
 
-document.addEventListener("click", (event) => {
-  const target = event.target.closest("button, [data-open-event]");
-  if (!target) return;
-  const openId = target.getAttribute("data-open-event");
-  if (openId) { selectedEventId = openId; clearMessages(); render(); return; }
-  if (target.matches("[data-back], [data-view-list]")) { selectedEventId = null; view = "upcoming"; clearMessages(); render(); return; }
-  if (target.matches("[data-view-create]")) { view = "create"; clearMessages(); render(); return; }
-  if (target.matches("[data-refresh]")) { refresh(); return; }
-  if (target.matches("[data-add-slot]")) { addDraftSlot(); return; }
-  if (target.hasAttribute("data-remove-draft")) { removeDraft(Number(target.getAttribute("data-remove-draft"))); return; }
-  if (target.hasAttribute("data-claim")) { claimSlot(target.getAttribute("data-claim")); return; }
-  if (target.hasAttribute("data-swap")) { swapTo(target.getAttribute("data-swap")); return; }
-  if (target.hasAttribute("data-release")) { releaseClaim(target.getAttribute("data-release")); return; }
-  if (target.hasAttribute("data-archive")) { archiveEvent(target.getAttribute("data-archive")); return; }
+// ── Events ───────────────────────────────────────────────────────────────────────
+
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.matches("[data-refresh]")) return refresh();
+  if (t.hasAttribute("data-claim")) { currentClaimNightId = t.getAttribute("data-claim"); return window.openClaimModal(currentClaimNightId); }
+  if (t.hasAttribute("data-release")) return releaseNight(t.getAttribute("data-release"));
+  if (t.hasAttribute("data-edit")) return window.openEditNightModal(t.getAttribute("data-edit"));
+  if (t.hasAttribute("data-toggle")) return toggleNight(t.getAttribute("data-toggle"));
+  if (t.hasAttribute("data-delete")) return deleteNight(t.getAttribute("data-delete"));
 });
 
-document.addEventListener("input", (event) => {
-  const input = event.target.closest("[data-draft]");
-  if (!input) return;
-  updateDraft(Number(input.getAttribute("data-draft")), input.getAttribute("data-field"), input.value);
-});
-
-document.addEventListener("submit", (event) => {
-  if (event.target.id !== "create-form") return;
-  event.preventDefault();
-  createEvent(event.target);
+document.addEventListener("submit", (e) => {
+  const form = e.target;
+  if (form.id === "claim-form") {
+    e.preventDefault();
+    const btn = form.querySelector(".btn-primary");
+    if (btn) { btn.disabled = true; btn.textContent = "Claiming…"; }
+    claimNight(currentClaimNightId, form.guest_name.value.trim(), form.vehicle.value.trim())
+      .catch((err) => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } showError(err.message); });
+    return;
+  }
+  if (form.id === "night-form") { e.preventDefault(); submitNightForm(form); return; }
+  if (form.id === "edit-form") {
+    e.preventDefault();
+    const nightId = form.getAttribute("data-night");
+    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0));
+    return;
+  }
 });
 
 refresh();

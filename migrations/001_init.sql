@@ -1,43 +1,44 @@
-CREATE TABLE IF NOT EXISTS app_potluck__events (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  date TEXT NOT NULL,
-  location TEXT DEFAULT '',
-  notes TEXT DEFAULT '',
-  created_by_id TEXT NOT NULL,
-  created_by_name TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  archived INTEGER NOT NULL DEFAULT 0
+-- One row per bookable night. The board sets `capacity` (number of guest
+-- passes available that night) and opens/closes the night. Written only by the
+-- board group (owner_or_visibility + write_privileged_only); everyone reads.
+-- `capacity` and `status` are plaintext so slot_claims can evaluate them.
+CREATE TABLE IF NOT EXISTS app_guest_parking__nights (
+  id          TEXT NOT NULL,
+  date        TEXT NOT NULL,
+  capacity    INTEGER NOT NULL DEFAULT 2 CHECK (capacity >= 0),
+  status      TEXT NOT NULL DEFAULT 'open',
+  note        TEXT NOT NULL DEFAULT '',
+  created_by  TEXT NOT NULL,
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL,
+  PRIMARY KEY (id)
 );
 
-CREATE TABLE IF NOT EXISTS app_potluck__slots (
-  id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  capacity INTEGER NOT NULL DEFAULT 1 CHECK (capacity > 0),
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  FOREIGN KEY (event_id) REFERENCES app_potluck__events(id) ON DELETE CASCADE
+CREATE UNIQUE INDEX IF NOT EXISTS app_guest_parking__nights_date_idx
+  ON app_guest_parking__nights (date);
+
+-- One row per claimed pass. Written ONLY by the hub slot_claims endpoints
+-- (claim/release/swap), which atomically enforce capacity — never by app SQL.
+CREATE TABLE IF NOT EXISTS app_guest_parking__claims (
+  id          TEXT NOT NULL,
+  night_id    TEXT NOT NULL,
+  member_id   TEXT NOT NULL,
+  guest_name  TEXT NOT NULL DEFAULT '',
+  vehicle     TEXT NOT NULL DEFAULT '',
+  claimed_at  TEXT NOT NULL,
+  PRIMARY KEY (id),
+  FOREIGN KEY (night_id) REFERENCES app_guest_parking__nights(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS app_potluck__claims (
-  id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL,
-  slot_id TEXT NOT NULL,
-  member_id TEXT NOT NULL,
-  member_name TEXT NOT NULL,
-  note TEXT DEFAULT '',
-  claimed_at TEXT NOT NULL,
-  FOREIGN KEY (event_id) REFERENCES app_potluck__events(id) ON DELETE CASCADE,
-  FOREIGN KEY (slot_id) REFERENCES app_potluck__slots(id) ON DELETE CASCADE,
-  UNIQUE (slot_id, member_id)
+CREATE INDEX IF NOT EXISTS app_guest_parking__claims_night_idx
+  ON app_guest_parking__claims (night_id);
+CREATE INDEX IF NOT EXISTS app_guest_parking__claims_member_idx
+  ON app_guest_parking__claims (member_id, night_id);
+
+-- key/value settings: board_group_id (privileged group) and default_capacity.
+-- Written only by the admin-gated /api/admin-config endpoint (app_config policy).
+CREATE TABLE IF NOT EXISTS app_guest_parking__settings (
+  key    TEXT NOT NULL,
+  value  TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (key)
 );
-
-CREATE INDEX IF NOT EXISTS app_potluck__events_date_idx
-  ON app_potluck__events(date, archived);
-
-CREATE INDEX IF NOT EXISTS app_potluck__slots_event_idx
-  ON app_potluck__slots(event_id, sort_order);
-
-CREATE INDEX IF NOT EXISTS app_potluck__claims_slot_idx
-  ON app_potluck__claims(slot_id, claimed_at);
