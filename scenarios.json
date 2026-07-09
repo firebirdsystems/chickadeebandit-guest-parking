@@ -1,0 +1,22 @@
+{
+  "scenarios": [
+    {
+      "name": "guest-night ledger rows are writable only by the privileged group",
+      "members": { "member": "adult" },
+      "steps": [
+        {
+          "action": "db",
+          "as": "member",
+          "sql": "UPDATE app_guest_parking__nights SET status = 'closed'",
+          "expect": { "status": 403 }
+        },
+        {
+          "action": "db",
+          "as": "member",
+          "sql": "DELETE FROM app_guest_parking__nights",
+          "expect": { "status": 403 }
+        }
+      ]
+    }
+  ]
+}
