@@ -1,7 +1,7 @@
 {
   "id": "guest-parking",
   "name": "Guest Parking Passes",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The board sets how many guest parking passes are available each night; residents claim an open pass first-come, and can release or move it. Atomic capacity claims keep the lot from being overbooked.",
   "entrypoint": "index.html",
   "runtime": "static",
@@ -26,7 +26,13 @@
       "privileged_groups": [
         { "settings_table": "settings", "settings_key": "board_group_id" }
       ],
-      "write_privileged_only": true
+      "write_privileged_only": true,
+      "retain_days": {
+        "default": 90,
+        "timestamp_column": "created_at",
+        "override_key": "parking_history",
+        "dependent_tables": [{ "table": "claims", "foreign_key": "night_id" }]
+      }
     },
     "claims": {
       "kind": "endpoint_only",
