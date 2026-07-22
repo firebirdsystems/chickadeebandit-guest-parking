@@ -1,5 +1,6 @@
 {
   "id": "guest-parking",
+  "contexts": ["household", "shared_space"],
   "name": "Guest Parking Passes",
   "version": "1.1.0",
   "description": "The board sets how many guest parking passes are available each night; residents claim an open pass first-come, and can release or move it. Atomic capacity claims keep the lot from being overbooked.",
