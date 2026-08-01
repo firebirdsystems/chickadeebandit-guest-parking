@@ -2,6 +2,11 @@
 -- passes available that night) and opens/closes the night. Written only by the
 -- board group (owner_or_visibility + write_privileged_only); everyone reads.
 -- `capacity` and `status` are plaintext so slot_claims can evaluate them.
+-- `date` must stay plaintext too (db_plaintext_columns — a bare "date" does NOT
+-- match the `_date` suffix rule): every read filters `date >= :today`, sorts by
+-- it, and the UNIQUE index below is the one-night-per-date guarantee. Encrypted,
+-- the ciphertext "v1:…" sorts above every digit, so the filter matched EVERY
+-- row, the order was ciphertext order, and the index could never collide.
 CREATE TABLE IF NOT EXISTS app_guest_parking__nights (
   id          TEXT NOT NULL,
   date        TEXT NOT NULL,

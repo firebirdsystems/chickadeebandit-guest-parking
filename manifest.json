@@ -17,7 +17,7 @@
     "requires_approval": false
   },
   "storage": "db",
-  "db_plaintext_columns": ["capacity", "guest_name", "vehicle"],
+  "db_plaintext_columns": ["date", "capacity", "guest_name", "vehicle"],
   "row_policies": {
     "nights": {
       "kind": "owner_or_visibility",
