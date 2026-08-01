@@ -68,6 +68,14 @@
     "claims": { "column": "member_id", "on_removed": "delete" }
   },
   "nav": { "label": "Guest Parking" },
+  "agenda": {
+    "kind": "reminder",
+    "label": "Guest Parking",
+    "source": {
+      "kind": "sql",
+      "query": "SELECT c.id AS id, 'Guest pass — ' || c.guest_name AS title, NULLIF(c.vehicle, '') AS subtitle, n.date AS when_at, c.member_id AS member_id FROM app_guest_parking__claims c JOIN app_guest_parking__nights n ON n.id = c.night_id WHERE n.date = :today LIMIT 20"
+    }
+  },
   "resource_limits": {
     "max_db_bytes": 52428800
   },
