@@ -9,6 +9,6 @@ SELECT
 FROM app_guest_parking__claims c
 JOIN app_guest_parking__nights n
   ON n.id = c.night_id
-WHERE n.date >= date('now')
+WHERE n.date >= :today
 ORDER BY n.date ASC, c.claimed_at ASC
 LIMIT 200

@@ -63,6 +63,10 @@
     "allowed_columns": ["guest_name", "vehicle"],
     "max_text_lengths": { "guest_name": 120, "vehicle": 80 }
   },
+  "member_references": {
+    "nights": { "column": "created_by", "on_removed": "keep" },
+    "claims": { "column": "member_id", "on_removed": "delete" }
+  },
   "nav": { "label": "Guest Parking" },
   "resource_limits": {
     "max_db_bytes": 52428800
