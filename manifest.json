@@ -76,6 +76,24 @@
       "query": "SELECT c.id AS id, 'Guest pass — ' || c.guest_name AS title, NULLIF(c.vehicle, '') AS subtitle, n.date AS when_at, c.member_id AS member_id FROM app_guest_parking__claims c JOIN app_guest_parking__nights n ON n.id = c.night_id WHERE n.date = :today LIMIT 20"
     }
   },
+  "glance": {
+    "source": {
+      "kind": "sql",
+      "query": "SELECT COUNT(*) AS n FROM app_guest_parking__claims c JOIN app_guest_parking__nights n ON n.id = c.night_id WHERE c.member_id = :me AND n.date >= :today AND n.date <= date(:today, '+6 days') LIMIT 1"
+    },
+    "display": {
+      "template": "badge",
+      "count": "n",
+      "label": "guest passes you hold this week",
+      "severity": "info"
+    }
+  },
+  "publishes": ["guest_parking.night_opened"],
+  "publish_acls": {
+    "guest_parking.night_opened": {
+      "require_group_setting": { "settings_table": "settings", "settings_key": "board_group_id" }
+    }
+  },
   "resource_limits": {
     "max_db_bytes": 52428800
   },

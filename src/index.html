@@ -131,6 +131,20 @@ const CLAIM_URL        = window.__CLAIM_URL         ?? "";
 const RELEASE_URL      = window.__RELEASE_URL       ?? "";
 const ME       = window.__CURRENT_MEMBER ?? null;
 const IS_ADMIN = !!window.__IS_ADMIN;
+const EVENTS   = window.__EVENTS_URL ?? "";
+
+async function publishEvent(type, subjectId, payload = {}) {
+  if (!EVENTS) return;
+  try {
+    await fetch(EVENTS, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, subject_id: subjectId, payload }),
+    });
+  } catch {
+    // The night is already open; a failed publish is not fatal.
+  }
+}
 
 let members = [];
 let memberMap = new Map();
@@ -309,6 +323,7 @@ async function createNight(date, capacity, note) {
     );
   }
   nights = [...nights.filter(n => n.date !== date), night].sort((a, b) => a.date.localeCompare(b.date));
+  return night;
 }
 
 async function submitNightForm(form) {
@@ -328,7 +343,14 @@ async function submitNightForm(form) {
       closeModal(); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
     } else {
       if (nights.some(n => n.date === date)) { showError("That night already exists — edit it instead."); return; }
-      await createNight(date, capacity, note);
+      const night = await createNight(date, capacity, note);
+      // Published from the single-night path only. The range branch above opens
+      // up to 120 nights in one submit — a whole season of passes is one board
+      // housekeeping action, not 120 things for rules to react to.
+      await publishEvent("guest_parking.night_opened", night.id, {
+        date: night.date,
+        capacity: night.capacity,
+      });
       closeModal(); showNotice("Parking night opened.");
     }
   } catch (e) { showError(e.message); }
