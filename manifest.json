@@ -17,6 +17,9 @@
     "requires_approval": false
   },
   "storage": "db",
+  "preload": {
+    "settings": {"sql": "SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')"}
+  },
   "db_plaintext_columns": ["date", "capacity", "guest_name", "vehicle"],
   "row_policies": {
     "nights": {
