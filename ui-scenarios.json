@@ -1,0 +1,30 @@
+{
+  "scenarios": [
+    {
+      "name": "a claimed pass offers Release to its holder and Claim to everyone else",
+      "members": { "holder": "adult", "neighbor": "adult" },
+      "steps": [
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, created_by, created_at, updated_at) VALUES ('gp-night', '2026-09-15', 2, 'open', ?, '2026-08-01T09:00:00Z', '2026-08-01T09:00:00Z')",
+          "params": ["{{holder}}"] },
+        { "action": "seedRaw",
+          "sql": "INSERT INTO app_guest_parking__claims (id, night_id, member_id, guest_name, vehicle, claimed_at) VALUES ('gp-claim', 'gp-night', ?, 'Aunt Vera', 'Blue sedan', '2026-08-01T10:00:00Z')",
+          "params": ["{{holder}}"] },
+
+        { "action": "open", "as": "neighbor" },
+        { "action": "expectVisible", "as": "neighbor", "selector": "[data-testid=\"claim-chip\"][data-night-id=\"gp-night\"]" },
+        { "action": "expectCount", "as": "neighbor", "selector": "[data-testid=\"claim-chip\"][data-mine=\"true\"]", "count": 0 },
+        { "action": "expectCount", "as": "neighbor", "selector": "[data-testid=\"release-pass\"][data-night-id=\"gp-night\"]", "count": 0 },
+        { "action": "expectCount", "as": "neighbor", "selector": "[data-testid=\"claim-chip\"][data-mine=\"false\"]", "count": 1 },
+        { "action": "expectVisible", "as": "neighbor", "selector": "[data-testid=\"claim-pass\"][data-night-id=\"gp-night\"]" },
+
+        { "action": "open", "as": "holder" },
+        { "action": "expectVisible", "as": "holder", "selector": "[data-testid=\"claim-chip\"][data-night-id=\"gp-night\"]" },
+        { "action": "expectCount", "as": "holder", "selector": "[data-testid=\"claim-chip\"][data-mine=\"false\"]", "count": 0 },
+        { "action": "expectCount", "as": "holder", "selector": "[data-testid=\"claim-pass\"][data-night-id=\"gp-night\"]", "count": 0 },
+        { "action": "expectCount", "as": "holder", "selector": "[data-testid=\"claim-chip\"][data-mine=\"true\"]", "count": 1 },
+        { "action": "expectVisible", "as": "holder", "selector": "[data-testid=\"release-pass\"][data-night-id=\"gp-night\"]" }
+      ]
+    }
+  ]
+}

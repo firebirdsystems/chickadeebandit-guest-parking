@@ -535,7 +535,7 @@ function renderClaim(claim) {
   const m = memberMap.get(claim.member_id);
   const label = claim.guest_name || (mine ? "Your pass" : (m?.name ? `${m.name}'s guest` : "Guest"));
   return `
-    <span class="claim-chip ${mine ? "mine" : ""}" title="Claimed by ${esc(m?.name ?? "resident")}">
+    <span class="claim-chip ${mine ? "mine" : ""}" data-testid="claim-chip" data-night-id="${esc(claim.night_id)}" data-mine="${mine}" title="Claimed by ${esc(m?.name ?? "resident")}">
       <span class="avatar" style="background:${esc(memberColor(claim.member_id))}">${esc(initial(m?.name ?? "?"))}</span>
       <span>${esc(label)}${claim.vehicle ? ` · ${esc(claim.vehicle)}` : ""}</span>
     </span>`;
@@ -553,9 +553,9 @@ function renderNight(night) {
 
   let action = "";
   if (mine) {
-    action = `<button class="btn btn-danger btn-sm" data-release="${esc(night.id)}">Release my pass</button>`;
+    action = `<button class="btn btn-danger btn-sm" data-testid="release-pass" data-night-id="${esc(night.id)}" data-release="${esc(night.id)}">Release my pass</button>`;
   } else if (isClaimable(night, claims)) {
-    action = `<button class="btn btn-sm" data-claim="${esc(night.id)}">Claim a pass</button>`;
+    action = `<button class="btn btn-sm" data-testid="claim-pass" data-night-id="${esc(night.id)}" data-claim="${esc(night.id)}">Claim a pass</button>`;
   }
 
   const boardTools = isBoard() ? `
@@ -566,7 +566,7 @@ function renderNight(night) {
     </div>` : "";
 
   return `
-    <article class="card">
+    <article class="card" data-testid="night-card" data-night-id="${esc(night.id)}">
       <div class="night-head">
         <div>
           <div class="night-date">${esc(relativeDay(night.date, today()))}</div>
