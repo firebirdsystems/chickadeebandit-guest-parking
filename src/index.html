@@ -17,13 +17,13 @@
       --accent-hover: var(--hub-primary-hover, #374151);
       --accent-fg: var(--hub-primary-fg, #ffffff);
       --radius: var(--hub-radius, 8px);
-      --green: #047857;
-      --green-soft: #d1fae5;
-      --amber: #b45309;
-      --amber-soft: #fef3c7;
-      --red: #b91c1c;
-      --red-soft: #fee2e2;
-      --blue-soft: #dbeafe;
+      --green: var(--hub-tint-success-fg, #047857);
+      --green-soft: var(--hub-tint-success, #d1fae5);
+      --amber: var(--hub-tint-warning-fg, #b45309);
+      --amber-soft: var(--hub-tint-warning, #fef3c7);
+      --red: var(--hub-tint-danger-fg, #b91c1c);
+      --red-soft: var(--hub-tint-danger, #fee2e2);
+      --blue-soft: var(--hub-tint-info, #dbeafe);
       --shadow: 0 1px 3px rgba(15, 23, 42, .07);
     }
     body {
@@ -47,17 +47,17 @@
     .night-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .night-date { font-weight: 750; font-size: 1.02rem; }
     .night-meta { margin-top: 2px; color: var(--muted); font-size: .82rem; }
-    .progress { height: 8px; overflow: hidden; border-radius: 999px; background: #eef2f7; margin: 10px 0 4px; }
+    .progress { height: 8px; overflow: hidden; border-radius: 999px; background: var(--bg); margin: 10px 0 4px; }
     .progress > span { display: block; height: 100%; background: var(--green); border-radius: 999px; }
     .pill {
       display: inline-flex; align-items: center; justify-content: center; min-height: 24px;
-      padding: 2px 9px; border-radius: 999px; background: #f1f5f9; color: var(--muted);
+      padding: 2px 9px; border-radius: 999px; background: var(--bg); color: var(--muted);
       font-size: .74rem; font-weight: 700; white-space: nowrap;
     }
     .pill.good { background: var(--green-soft); color: var(--green); }
     .pill.warn { background: var(--amber-soft); color: var(--amber); }
     .pill.full { background: var(--red-soft); color: var(--red); }
-    .pill.info { background: var(--blue-soft); color: #1d4ed8; }
+    .pill.info { background: var(--blue-soft); color: var(--hub-tint-info-fg, #1d4ed8); }
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
       border: 1px solid transparent; border-radius: 8px; padding: 8px 12px;
@@ -67,13 +67,13 @@
     .btn:hover { background: var(--accent-hover); }
     .btn:disabled { opacity: .48; cursor: default; }
     .btn-ghost { background: transparent; color: var(--text); border-color: var(--border-mid); }
-    .btn-ghost:hover { background: #f8fafc; }
+    .btn-ghost:hover { background: var(--bg); }
     .btn-danger { background: var(--red-soft); color: var(--red); border-color: transparent; }
     .btn-danger:hover { background: #fecaca; }
     .btn-sm { min-height: 31px; padding: 5px 9px; font-size: .78rem; }
     .claims { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .claim-chip {
-      display: inline-flex; align-items: center; gap: 6px; background: #f8fafc;
+      display: inline-flex; align-items: center; gap: 6px; background: var(--bg);
       border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px 3px 4px; font-size: .78rem;
     }
     .claim-chip.mine { background: var(--blue-soft); border-color: #bfdbfe; }
