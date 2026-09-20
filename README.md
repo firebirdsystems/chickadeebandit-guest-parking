@@ -1,5 +1,7 @@
 # Guest Parking Passes
 
+A [Chickadee Bandit](https://chickadeebandit.com/app-library/guest-parking) app.
+
 First-come guest parking for HOAs and residential associations. The board sets how
 many guest passes are available each night; residents claim an open pass, and can
 release it or let it roll over by re-claiming another night.
