@@ -118,7 +118,7 @@
 </div>
 
 <script type="module">
-import { esc, memberColor, initial, hubConfirm, hubAlert } from "/hub-sdk.js";
+import { esc, memberColor, initial, hubConfirm, hubAlert, glyph } from "/hub-sdk.js";
 import {
   toISODate, addDays, relativeDay, fromISODate,
   claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard,
@@ -411,7 +411,7 @@ window.openClaimModal = function (nightId) {
   const night = nights.find(n => n.id === nightId);
   if (!night) return;
   openModal(`
-    <h3>🅿️ Claim a guest pass</h3>
+    <h3>${glyph("parking")} Claim a guest pass</h3>
     <p class="muted tiny" style="margin-bottom:12px">${esc(relativeDay(night.date, today()))} — ${remaining(night, claims)} of ${esc(String(night.capacity))} pass${night.capacity === 1 ? "" : "es"} open.</p>
     <form id="claim-form">
       <div class="field">
@@ -486,7 +486,7 @@ window.openSettingsModal = function () {
         <option value="" ${!settings.board_group_id ? "selected" : ""}>— No board configured —</option>
         ${opts}
       </select>
-      <span class="muted tiny">${!boardConfigured() ? "⚠️ Pick a board group to enable opening nights and setting capacity — those actions are disabled until one is set." : "Only members of this group can open nights and set capacity."}</span>
+      <span class="muted tiny">${!boardConfigured() ? `${glyph("warning")} Pick a board group to enable opening nights and setting capacity — those actions are disabled until one is set.` : "Only members of this group can open nights and set capacity."}</span>
     </div>
     <div class="field">
       <label for="s-cap">Default passes per night</label>
@@ -496,7 +496,7 @@ window.openSettingsModal = function () {
     <p class="muted">Default passes per night: <strong>${esc(String(settings.default_capacity))}</strong></p>
     <p class="tiny muted" style="margin-top:8px">Only a hub admin can change these settings.</p>`;
   openModal(`
-    <h3>⚙️ Guest Parking settings</h3>
+    <h3>${glyph("gear")} Guest Parking settings</h3>
     ${controls}
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>
@@ -596,7 +596,7 @@ function render() {
   root.innerHTML = `
     <div class="topbar">
       <div>
-        <h1>🅿️ Guest Parking</h1>
+        <h1>${glyph("parking")} Guest Parking</h1>
         <p class="muted tiny">Claim one of the community's guest passes for the night.</p>
       </div>
       <div class="row" style="justify-content:flex-end">
