@@ -21,6 +21,10 @@
     "settings": {"sql": "SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')"},
     "claims": {
       "sql": "SELECT * FROM app_guest_parking__claims ORDER BY claimed_at ASC"
+    },
+    "nights": {
+      "sql": "SELECT * FROM app_guest_parking__nights WHERE date >= ? ORDER BY date ASC",
+      "params": [":today"]
     }
   },
   "db_plaintext_columns": ["date", "capacity", "guest_name", "vehicle"],

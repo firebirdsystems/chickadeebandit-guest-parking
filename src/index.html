@@ -118,7 +118,7 @@
 </div>
 
 <script type="module">
-import { esc, memberColor, initial, hubConfirm, hubAlert, glyph } from "/hub-sdk.js";
+import { esc, memberColor, initial, hubConfirm, hubAlert, glyph, hubToday } from "/hub-sdk.js";
 import {
   toISODate, addDays, relativeDay, fromISODate,
   claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard,
@@ -159,7 +159,10 @@ let currentClaimNightId = null;
 
 const nowIso = () => new Date().toISOString();
 const uid = (p) => `${p}-${crypto.randomUUID()}`;
-const today = () => toISODate(new Date());
+// The household's calendar day, which is also what the hub binds to `:today`
+// for the preloaded nights read. The device-derived day this replaced could
+// name a different day than the household's, hiding tonight's night.
+const today = () => hubToday() ?? toISODate(new Date());
 
 function isBoard() { return _isBoard(ME, groups, settings.board_group_id); }
 function boardConfigured() { return !!settings.board_group_id && !!(groups.find(g => g.id === settings.board_group_id)); }
