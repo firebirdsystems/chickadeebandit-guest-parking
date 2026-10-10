@@ -18,7 +18,10 @@
   },
   "storage": "db",
   "preload": {
-    "settings": {"sql": "SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')"}
+    "settings": {"sql": "SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')"},
+    "claims": {
+      "sql": "SELECT * FROM app_guest_parking__claims ORDER BY claimed_at ASC"
+    }
   },
   "db_plaintext_columns": ["date", "capacity", "guest_name", "vehicle"],
   "row_policies": {
