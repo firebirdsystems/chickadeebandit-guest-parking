@@ -109,6 +109,8 @@
       .night-head { flex-direction: column; align-items: stretch; }
       .grid2 { grid-template-columns: 1fr; }
     }
+    .load-error { margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--hub-tint-danger, #fee2e2); color: var(--hub-tint-danger-fg, #b91c1c); font-size: 0.9rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .load-error-retry { background: none; border: 1px solid currentColor; border-radius: 8px; padding: 5px 10px; font: inherit; font-weight: 600; color: inherit; cursor: pointer; flex-shrink: 0; }
   </style>
   <base href="/run/guest-parking/">
 </head>
@@ -174,8 +176,8 @@ async function db(sql, params = []) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sql, params }),
   });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error);
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
   return json;
 }
 
@@ -185,13 +187,13 @@ async function slotCall(url, body, label) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || json.error) {
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || typeof json !== "object" || json.error) {
     const reason = json.reason;
     const msg = reason === "slot_full" ? "That night is fully booked."
       : reason === "already_claimed" ? "You already hold a pass for that night."
       : reason === "slot_closed" ? "That night is no longer open for passes."
-      : (json.error || `${label} failed.`);
+      : (json?.error || `${label} failed.`);
     throw Object.assign(new Error(msg), { reason });
   }
   return json;
@@ -222,24 +224,23 @@ async function loadContext() {
     memberMap = new Map(members.map(m => [m.id, m]));
     return;
   }
-  try {
-    const res = await fetch(`${CONTEXT}?keys=family.members,family.groups`);
-    const data = await res.json();
-    members = data["family.members"] ?? [];
-    groups  = data["family.groups"]  ?? [];
-  } catch { members = []; groups = []; }
+  // A failed read is a failed load: with no groups read, nobody is on the board.
+  const res = await fetch(`${CONTEXT}?keys=family.members,family.groups`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || typeof data !== "object" || (Array.isArray(data.$errors) && data.$errors.some(k => k === "family.members" || k === "family.groups"))) throw new Error("Couldn’t load members");
+  members = data["family.members"] ?? [];
+  groups  = data["family.groups"]  ?? [];
   memberMap = new Map(members.map(m => [m.id, m]));
 }
 
 async function loadSettings() {
   if (!DB) { settings = { board_group_id: "board", default_capacity: 2 }; return; }
-  try {
-    const { rows } = await db(`SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')`);
-    for (const r of rows) {
-      if (r.key === "board_group_id") settings.board_group_id = r.value || null;
-      if (r.key === "default_capacity") settings.default_capacity = Math.max(0, Number(r.value) || 2);
-    }
-  } catch { /* leave defaults */ }
+  // Not caught: a failed read must not show "no board group" as the stored setting.
+  const { rows } = await db(`SELECT key, value FROM app_guest_parking__settings WHERE key IN ('board_group_id', 'default_capacity')`);
+  for (const r of rows) {
+    if (r.key === "board_group_id") settings.board_group_id = r.value || null;
+    if (r.key === "default_capacity") settings.default_capacity = Math.max(0, Number(r.value) || 2);
+  }
 }
 
 async function loadData() {
@@ -264,13 +265,22 @@ function seedDemo() {
   ];
 }
 
+let loaded = false;     // a load has succeeded at least once
+let loadFailed = false; // the first load failed: banner instead of the nights
+
 async function refresh() {
   clearMessages();
   try {
     await Promise.all([loadContext(), loadSettings()]);
     await loadData();
+    loaded = true;
+    loadFailed = false;
     render();
-  } catch (e) { error = e.message; render(); }
+  } catch (e) {
+    if (loaded) error = e.message;
+    else loadFailed = true;
+    render();
+  }
 }
 
 // ── Messages ───────────────────────────────────────────────────────────────────
@@ -359,10 +369,21 @@ async function submitNightForm(form) {
   } catch (e) { showError(e.message); }
 }
 
+// The hub answers a write the row policy narrowed to nothing as a success with
+// no rows changed. The schedule is read again and the board member is told.
+async function nightUnchanged() {
+  await loadData().catch(() => {});
+  closeModal();
+  showError("This night can no longer be changed.");
+}
+
 async function updateCapacity(nightId, capacity) {
   const night = nights.find(n => n.id === nightId);
   if (!night) return;
-  if (DB) await db(`UPDATE app_guest_parking__nights SET capacity = ?, updated_at = ? WHERE id = ?`, [capacity, nowIso(), nightId]);
+  if (DB) {
+    const { changed } = await db(`UPDATE app_guest_parking__nights SET capacity = ?, updated_at = ? WHERE id = ?`, [capacity, nowIso(), nightId]);
+    if (changed === 0) return nightUnchanged();
+  }
   nights = nights.map(n => n.id === nightId ? { ...n, capacity } : n);
   closeModal();
   showNotice("Capacity updated.");
@@ -373,7 +394,10 @@ async function toggleNight(nightId) {
   if (!night) return;
   const next = night.status === "open" ? "closed" : "open";
   try {
-    if (DB) await db(`UPDATE app_guest_parking__nights SET status = ?, updated_at = ? WHERE id = ?`, [next, nowIso(), nightId]);
+    if (DB) {
+      const { changed } = await db(`UPDATE app_guest_parking__nights SET status = ?, updated_at = ? WHERE id = ?`, [next, nowIso(), nightId]);
+      if (changed === 0) return nightUnchanged();
+    }
     nights = nights.map(n => n.id === nightId ? { ...n, status: next } : n);
     showNotice(next === "closed" ? "Night closed to new passes." : "Night reopened.");
   } catch (e) { showError(e.message); }
@@ -388,7 +412,10 @@ async function deleteNight(nightId) {
   });
   if (!ok) return;
   try {
-    if (DB) await db(`DELETE FROM app_guest_parking__nights WHERE id = ?`, [nightId]);
+    if (DB) {
+      const { changed } = await db(`DELETE FROM app_guest_parking__nights WHERE id = ?`, [nightId]);
+      if (changed === 0) return nightUnchanged();
+    }
     nights = nights.filter(n => n.id !== nightId);
     claims = claims.filter(c => c.night_id !== nightId);
     showNotice("Parking night deleted.");
@@ -588,6 +615,18 @@ function renderNight(night) {
 function render() {
   const root = document.getElementById("root");
   root.className = "app";
+  if (loadFailed) {
+    root.innerHTML = `
+      <div class="topbar">
+        <div>
+          <h1>${glyph("parking")} Guest Parking</h1>
+          <p class="muted tiny">Claim one of the community's guest passes for the night.</p>
+        </div>
+      </div>
+      <div class="load-error" data-testid="load-error" role="alert"><span>Couldn’t load the parking nights.</span>
+        <button type="button" class="load-error-retry" data-testid="load-retry">Try again</button></div>`;
+    return;
+  }
   const upcoming = [...nights].sort((a, b) => a.date.localeCompare(b.date));
   const boardBtn = isBoard()
     ? `<button class="btn" onclick="openAddNightModal()">Open night</button>`
@@ -623,7 +662,7 @@ function render() {
 document.addEventListener("click", (e) => {
   const t = e.target.closest("button");
   if (!t) return;
-  if (t.matches("[data-refresh]")) return refresh();
+  if (t.matches("[data-refresh]") || t.matches('[data-testid="load-retry"]')) return refresh();
   if (t.hasAttribute("data-claim")) { currentClaimNightId = t.getAttribute("data-claim"); return window.openClaimModal(currentClaimNightId); }
   if (t.hasAttribute("data-release")) return releaseNight(t.getAttribute("data-release"));
   if (t.hasAttribute("data-edit")) return window.openEditNightModal(t.getAttribute("data-edit"));
@@ -645,7 +684,7 @@ document.addEventListener("submit", (e) => {
   if (form.id === "edit-form") {
     e.preventDefault();
     const nightId = form.getAttribute("data-night");
-    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0));
+    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0)).catch((err) => showError(err.message));
     return;
   }
 });
