@@ -181,6 +181,11 @@ async function db(sql, params = []) {
   return json;
 }
 
+// A failed write shows one fixed line for the action. Only wording this app
+// wrote for the reader (marked `forUser` where it is thrown) is shown as is;
+// the hub's own error text goes to the console.
+function failText(e, line) { if (!e?.forUser) console.error(e); return e?.forUser ? e.message : line; }
+
 async function slotCall(url, body, label) {
   const res = await fetch(url, {
     method: "POST",
@@ -194,7 +199,8 @@ async function slotCall(url, body, label) {
       : reason === "already_claimed" ? "You already hold a pass for that night."
       : reason === "slot_closed" ? "That night is no longer open for passes."
       : (json?.error || `${label} failed.`);
-    throw Object.assign(new Error(msg), { reason });
+    // The three named refusals are this app's own wording.
+    throw Object.assign(new Error(msg), { reason, forUser: reason === "slot_full" || reason === "already_claimed" || reason === "slot_closed" });
   }
   return json;
 }
@@ -277,7 +283,7 @@ async function refresh() {
     loadFailed = false;
     render();
   } catch (e) {
-    if (loaded) error = e.message;
+    if (loaded) error = failText(e, "Couldn’t refresh the parking nights.");
     else loadFailed = true;
     render();
   }
@@ -307,7 +313,7 @@ async function claimNight(nightId, guestName, vehicle) {
     showNotice("Guest pass claimed.");
   } catch (e) {
     await loadData().catch(() => {});
-    showError(e.message);
+    showError(failText(e, "Couldn’t claim the pass — try again."));
   }
 }
 
@@ -321,7 +327,7 @@ async function releaseNight(nightId) {
     await slotCall(RELEASE_URL, { slot_id: nightId }, "Release");
     claims = claims.filter(c => c.id !== mine.id);
     showNotice("Pass released.");
-  } catch (e) { await loadData().catch(() => {}); showError(e.message); }
+  } catch (e) { await loadData().catch(() => {}); showError(failText(e, "Couldn’t release the pass — try again.")); }
 }
 
 // ── Board actions (nights are write_privileged_only) ────────────────────────────
@@ -366,7 +372,7 @@ async function submitNightForm(form) {
       });
       closeModal(); showNotice("Parking night opened.");
     }
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t open the parking night — try again.")); }
 }
 
 // The hub answers a write the row policy narrowed to nothing as a success with
@@ -400,7 +406,7 @@ async function toggleNight(nightId) {
     }
     nights = nights.map(n => n.id === nightId ? { ...n, status: next } : n);
     showNotice(next === "closed" ? "Night closed to new passes." : "Night reopened.");
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t update the night — try again.")); }
 }
 
 async function deleteNight(nightId) {
@@ -419,7 +425,7 @@ async function deleteNight(nightId) {
     nights = nights.filter(n => n.id !== nightId);
     claims = claims.filter(c => c.night_id !== nightId);
     showNotice("Parking night deleted.");
-  } catch (e) { showError(e.message); }
+  } catch (e) { showError(failText(e, "Couldn’t delete the night — try again.")); }
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────────────
@@ -550,7 +556,7 @@ window.saveSettings = async function () {
     render();
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = "Save"; }
-    showError(e.message);
+    showError(failText(e, "Couldn’t save the settings — try again."));
   }
 };
 
@@ -677,14 +683,14 @@ document.addEventListener("submit", (e) => {
     const btn = form.querySelector(".btn-primary");
     if (btn) { btn.disabled = true; btn.textContent = "Claiming…"; }
     claimNight(currentClaimNightId, form.guest_name.value.trim(), form.vehicle.value.trim())
-      .catch((err) => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } showError(err.message); });
+      .catch((err) => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } showError(failText(err, "Couldn’t claim the pass — try again.")); });
     return;
   }
   if (form.id === "night-form") { e.preventDefault(); submitNightForm(form); return; }
   if (form.id === "edit-form") {
     e.preventDefault();
     const nightId = form.getAttribute("data-night");
-    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0)).catch((err) => showError(err.message));
+    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0)).catch((err) => showError(failText(err, "Couldn’t update the capacity — try again.")));
     return;
   }
 });
