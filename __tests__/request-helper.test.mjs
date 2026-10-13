@@ -71,6 +71,49 @@ async function call(helper, kind) {
   return sandbox.__helper("SELECT 1", []);
 }
 
+// The slot helper posts to the claim and release URLs, not the database URL,
+// so the sweep below does not reach it. It must meet the same three answers
+// with its own error — a refusal it has no wording for is "<label> failed.".
+describe("slotCall() rejects every answer that is not a result", () => {
+  const html = readFileSync(join(srcDir, "index.html"), "utf-8");
+  const start = html.indexOf("async function slotCall(");
+  if (start < 0) throw new Error("slotCall() is no longer in src/index.html");
+  const text = html.slice(start, html.indexOf("\n}\n", start) + 2);
+  const slotCall = (make) => {
+    const sandbox = { fetch: async () => make(), Response, JSON, Error, Object };
+    vm.createContext(sandbox);
+    vm.runInContext(`${text}\nglobalThis.__helper = slotCall;`, sandbox);
+    return sandbox.__helper("/api/slots/claim", { slot_id: "n1" }, "Claim");
+  };
+  const refusal = (reason) => () => new Response(JSON.stringify({ error: "Refused", reason }), { status: 409, headers: { "Content-Type": "application/json" } });
+
+  it("hands back a well-formed answer", async () => {
+    await expect(slotCall(() => new Response(JSON.stringify({ claim_id: "c1" }), { status: 200 }))).resolves.toMatchObject({ claim_id: "c1" });
+  });
+  it("a body that is not JSON is the helper's own failure, at any status", async () => {
+    for (const status of [200, 502]) {
+      const err = await slotCall(() => new Response("<!doctype html><title>Gateway</title>", { status, headers: { "Content-Type": "text/html" } })).then(() => null, (e) => e);
+      expect(err?.name, `status ${status}`).toBe("Error");
+      expect(err.message).toBe("Claim failed.");
+      expect(err.forUser).toBe(false);
+    }
+  });
+  it("an outage and an error body reject with the hub's text, not for the reader", async () => {
+    for (const kind of ["down", "errorIn200"]) {
+      const err = await slotCall(response[kind]).then(() => null, (e) => e);
+      expect(err?.message, kind).toBe(kind === "down" ? "Service unavailable" : "Query failed");
+      expect(err.forUser).toBe(false);
+    }
+  });
+  it("the three named refusals keep this app's wording", async () => {
+    const worded = { slot_full: "That night is fully booked.", already_claimed: "You already hold a pass for that night.", slot_closed: "That night is no longer open for passes." };
+    for (const [reason, message] of Object.entries(worded)) {
+      const err = await slotCall(refusal(reason)).then(() => null, (e) => e);
+      expect(err).toMatchObject({ message, reason, forUser: true });
+    }
+  });
+});
+
 const sources = readdirSync(srcDir)
   .filter((f) => /\.(html|js)$/.test(f))
   .map((f) => ({ file: f, helpers: dbHelpers(readFileSync(join(srcDir, f), "utf-8")) }))

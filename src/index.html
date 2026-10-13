@@ -194,7 +194,7 @@ async function slotCall(url, body, label) {
   });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json || typeof json !== "object" || json.error) {
-    const reason = json.reason;
+    const reason = json?.reason;
     const msg = reason === "slot_full" ? "That night is fully booked."
       : reason === "already_claimed" ? "You already hold a pass for that night."
       : reason === "slot_closed" ? "That night is no longer open for passes."
@@ -682,8 +682,11 @@ document.addEventListener("submit", (e) => {
     e.preventDefault();
     const btn = form.querySelector(".btn-primary");
     if (btn) { btn.disabled = true; btn.textContent = "Claiming…"; }
+    // claimNight reports its own failures and leaves the form open, so the
+    // button is restored however the call ends (a claimed pass closes the form).
     claimNight(currentClaimNightId, form.guest_name.value.trim(), form.vehicle.value.trim())
-      .catch((err) => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } showError(failText(err, "Couldn’t claim the pass — try again.")); });
+      .catch((err) => showError(failText(err, "Couldn’t claim the pass — try again.")))
+      .finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } });
     return;
   }
   if (form.id === "night-form") { e.preventDefault(); submitNightForm(form); return; }
