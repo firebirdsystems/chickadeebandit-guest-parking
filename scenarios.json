@@ -144,6 +144,56 @@
           "expect": { "status": 200, "rowCount": 0 }
         }
       ]
+    },
+    {
+      "name": "a range of nights opens as one batch: every night lands, or (one date already open) none does",
+      "members": { "boardie": "adult", "member": "adult" },
+      "steps": [
+        { "action": "seedGroup", "group": "board", "name": "Board", "members": ["boardie"] },
+        {
+          "action": "seedRaw",
+          "sql": "INSERT INTO app_guest_parking__settings (key, value) VALUES ('board_group_id', ?)",
+          "params": ["{{group:board}}"]
+        },
+        {
+          "action": "batch",
+          "as": "boardie",
+          "statements": [
+            { "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?, ?), (?, ?, ?, 'open', ?, ?, ?, ?)", "params": ["r1", "2026-02-01", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "r2", "2026-02-02", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"] },
+            { "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?, ?), (?, ?, ?, 'open', ?, ?, ?, ?)", "params": ["r3", "2026-02-03", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "r4", "2026-02-04", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"] }
+          ],
+          "expect": { "status": 200, "changed": [2, 2] }
+        },
+        {
+          "action": "db",
+          "as": "member",
+          "sql": "SELECT id, date, capacity, status FROM app_guest_parking__nights ORDER BY date ASC",
+          "expect": { "status": 200, "rowCount": 4, "rowsContain": [{ "id": "r1", "date": "2026-02-01", "capacity": 2, "status": "open" }, { "id": "r4", "date": "2026-02-04" }] }
+        },
+        {
+          "action": "batch",
+          "as": "boardie",
+          "statements": [
+            { "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?, ?), (?, ?, ?, 'open', ?, ?, ?, ?)", "params": ["r5", "2026-02-05", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "r6", "2026-02-06", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"] },
+            { "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?, ?), (?, ?, ?, 'open', ?, ?, ?, ?)", "params": ["r7", "2026-02-04", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "r8", "2026-02-07", 2, "Season", "{{boardie}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"] }
+          ],
+          "expect": { "status": 400, "errorIncludes": "UNIQUE" }
+        },
+        {
+          "action": "db",
+          "as": "member",
+          "sql": "SELECT id FROM app_guest_parking__nights",
+          "expect": { "status": 200, "rowCount": 4 }
+        },
+        {
+          "action": "batch",
+          "as": "member",
+          "statements": [
+            { "sql": "INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES (?, ?, ?, 'open', ?, ?, ?, ?), (?, ?, ?, 'open', ?, ?, ?, ?)", "params": ["r9", "2026-02-08", 2, "Season", "{{member}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "r10", "2026-02-09", 2, "Season", "{{member}}", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z"] }
+          ],
+          "expect": { "status": 403 }
+        }
+      ]
     }
   ]
 }

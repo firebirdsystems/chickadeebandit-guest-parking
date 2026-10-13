@@ -123,7 +123,7 @@
 import { esc, memberColor, initial, hubConfirm, hubAlert, glyph, hubToday } from "/hub-sdk.js";
 import {
   toISODate, addDays, relativeDay, fromISODate,
-  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard,
+  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard, nightInsertStatements,
 } from "./logic.js";
 
 const CONTEXT          = window.__CONTEXT_URL      ?? "";
@@ -181,6 +181,19 @@ async function db(sql, params = []) {
   return json;
 }
 
+// Atomic multi-statement form of /api/db: the statements land whole or not at all.
+async function dbBatch(statements) {
+  if (!DB) return { results: [] };
+  const res = await fetch(DB, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ statements }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
+  return json;
+}
+
 // A failed write shows one fixed line for the action. Only wording this app
 // wrote for the reader (marked `forUser` where it is thrown) is shown as is;
 // the hub's own error text goes to the console.
@@ -193,7 +206,7 @@ async function slotCall(url, body, label) {
     body: JSON.stringify(body),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) {
+  if (!res.ok || !json || typeof json !== "object" || json.error || json.success !== true) {
     const reason = json?.reason;
     const msg = reason === "slot_full" ? "That night is fully booked."
       : reason === "already_claimed" ? "You already hold a pass for that night."
@@ -211,10 +224,8 @@ async function saveSetting(key, value) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ key, value }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? "Save failed");
-  }
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error ?? "Save failed");
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────
@@ -313,6 +324,9 @@ async function claimNight(nightId, guestName, vehicle) {
     showNotice("Guest pass claimed.");
   } catch (e) {
     await loadData().catch(() => {});
+    // A refusal the hub named (full, already held, closed) cannot succeed on a
+    // retry, so the form goes and the reason shows over the re-read schedule.
+    if (e?.forUser) closeModal();
     showError(failText(e, "Couldn’t claim the pass — try again."));
   }
 }
@@ -354,11 +368,17 @@ async function submitNightForm(form) {
   if (!date) return showError("Choose a date.");
   try {
     if (rangeEnd && rangeEnd > date) {
-      let cur = date, made = 0;
-      while (cur <= rangeEnd && made < 120) {
-        if (!nights.some(n => n.date === cur)) { await createNight(cur, capacity, note); made++; }
+      // One batch, so the range opens whole or not at all: a failure part-way
+      // used to leave some of the nights open under a message that said none were.
+      const opened = [], stamp = nowIso();
+      let cur = date;
+      while (cur <= rangeEnd && opened.length < 120) {
+        if (!nights.some(n => n.date === cur)) opened.push({ id: uid("night"), date: cur, capacity, status: "open", note, created_by: ME.id, created_at: stamp, updated_at: stamp });
         cur = addDays(cur, 1);
       }
+      if (DB && opened.length) await dbBatch(nightInsertStatements(opened));
+      nights = [...nights, ...opened].sort((a, b) => a.date.localeCompare(b.date));
+      const made = opened.length;
       closeModal(); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
     } else {
       if (nights.some(n => n.date === date)) { showError("That night already exists — edit it instead."); return; }
@@ -372,7 +392,12 @@ async function submitNightForm(form) {
       });
       closeModal(); showNotice("Parking night opened.");
     }
-  } catch (e) { showError(failText(e, "Couldn’t open the parking night — try again.")); }
+  } catch (e) {
+    // Read again before the retry: a night someone else opened meanwhile (one
+    // per date) would otherwise refuse the same request every time.
+    await loadData().catch(() => {});
+    showError(failText(e, "Couldn’t open the parking night — try again."));
+  }
 }
 
 // The hub answers a write the row policy narrowed to nothing as a success with
@@ -689,11 +714,23 @@ document.addEventListener("submit", (e) => {
       .finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } });
     return;
   }
-  if (form.id === "night-form") { e.preventDefault(); submitNightForm(form); return; }
+  if (form.id === "night-form") {
+    e.preventDefault();
+    const btn = form.querySelector(".btn-primary");
+    if (btn?.disabled) return; // a save is already out
+    if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
+    submitNightForm(form).finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Open night"; } });
+    return;
+  }
   if (form.id === "edit-form") {
     e.preventDefault();
     const nightId = form.getAttribute("data-night");
-    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0)).catch((err) => showError(failText(err, "Couldn’t update the capacity — try again.")));
+    const btn = form.querySelector(".btn-primary");
+    if (btn?.disabled) return; // a save is already out
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0))
+      .catch((err) => showError(failText(err, "Couldn’t update the capacity — try again.")))
+      .finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Save"; } });
     return;
   }
 });

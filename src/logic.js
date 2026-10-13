@@ -76,6 +76,23 @@ export function isClaimable(night, claims) {
   return night.status === "open" && remaining(night, claims) > 0;
 }
 
+// ── Opening a range of nights ─────────────────────────────────────────────────
+
+// The INSERTs for one batch request, so a range lands whole or not at all. The
+// hub binds at most 100 values a statement: 14 nights of 7 values each. The 120
+// nights a range can hold are then 9 statements, inside the 25 a batch takes.
+export function nightInsertStatements(rows, perStatement = 14) {
+  const statements = [];
+  for (let i = 0; i < rows.length; i += perStatement) {
+    const chunk = rows.slice(i, i + perStatement);
+    statements.push({
+      sql: `INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at) VALUES ${chunk.map(() => "(?, ?, ?, 'open', ?, ?, ?, ?)").join(", ")}`,
+      params: chunk.flatMap((n) => [n.id, n.date, n.capacity, n.note, n.created_by, n.created_at, n.updated_at]),
+    });
+  }
+  return statements;
+}
+
 // ── Access control ────────────────────────────────────────────────────────────
 
 // Board members configure capacity and open/close nights. This mirrors the hub's

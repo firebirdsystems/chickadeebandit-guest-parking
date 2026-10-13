@@ -88,7 +88,14 @@ describe("slotCall() rejects every answer that is not a result", () => {
   const refusal = (reason) => () => new Response(JSON.stringify({ error: "Refused", reason }), { status: 409, headers: { "Content-Type": "application/json" } });
 
   it("hands back a well-formed answer", async () => {
-    await expect(slotCall(() => new Response(JSON.stringify({ claim_id: "c1" }), { status: 200 }))).resolves.toMatchObject({ claim_id: "c1" });
+    await expect(slotCall(() => new Response(JSON.stringify({ success: true, claim_id: "c1" }), { status: 201 }))).resolves.toMatchObject({ claim_id: "c1" });
+  });
+  // The hub answers a claim or release that happened with `success: true`. A
+  // 200 that does not say so is not a pass claimed.
+  it("a 200 that does not say it succeeded is the helper's own failure", async () => {
+    const err = await slotCall(() => new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } })).then(() => null, (e) => e);
+    expect(err?.message).toBe("Claim failed.");
+    expect(err.forUser).toBe(false);
   });
   it("a body that is not JSON is the helper's own failure, at any status", async () => {
     for (const status of [200, 502]) {
