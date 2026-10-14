@@ -37,13 +37,7 @@
       "privileged_groups": [
         { "settings_table": "settings", "settings_key": "board_group_id" }
       ],
-      "write_privileged_only": true,
-      "retain_days": {
-        "default": 90,
-        "timestamp_column": "created_at",
-        "override_key": "parking_history",
-        "dependent_tables": [{ "table": "claims", "foreign_key": "night_id" }]
-      }
+      "write_privileged_only": true
     },
     "claims": {
       "kind": "endpoint_only",
@@ -51,6 +45,14 @@
     },
     "settings": {
       "kind": "app_config"
+    }
+  },
+  "retention": {
+    "nights": {
+      "default": 90,
+      "timestamp_column": "created_at",
+      "override_key": "parking_history",
+      "dependent_tables": [{ "table": "claims", "foreign_key": "night_id" }]
     }
   },
   "admin_config": {
@@ -103,9 +105,6 @@
     "guest_parking.night_opened": {
       "require_group_setting": { "settings_table": "settings", "settings_key": "board_group_id" }
     }
-  },
-  "resource_limits": {
-    "max_db_bytes": 52428800
   },
   "icon": "🅿️",
   "ai_access": {
