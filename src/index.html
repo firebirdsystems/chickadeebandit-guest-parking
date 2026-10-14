@@ -123,7 +123,7 @@
 import { esc, memberColor, initial, hubConfirm, hubAlert, glyph, hubToday } from "/hub-sdk.js";
 import {
   toISODate, addDays, relativeDay, fromISODate,
-  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard, nightInsertStatements, outcomeUnknown,
+  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard, nightInsertStatements, outcomeUnknown, failureLine,
 } from "./logic.js";
 
 const CONTEXT          = window.__CONTEXT_URL      ?? "";
@@ -198,6 +198,9 @@ async function dbBatch(statements) {
 // wrote for the reader (marked `forUser` where it is thrown) is shown as is;
 // the hub's own error text goes to the console.
 function failText(e, line) { if (!e?.forUser) console.error(e); return e?.forUser ? e.message : line; }
+// A failed write: the line `failureLine` picks from the status (a refusal is
+// not asked to try again), in this app's words.
+function failLine(e, words) { if (!e?.forUser) console.error(e); return failureLine(e, words); }
 
 async function slotCall(url, body, label) {
   const res = await fetch(url, {
@@ -212,8 +215,10 @@ async function slotCall(url, body, label) {
       : reason === "already_claimed" ? "You already hold a pass for that night."
       : reason === "slot_closed" ? "That night is no longer open for passes."
       : (json?.error || `${label} failed.`);
-    // The three named refusals are this app's own wording.
-    throw Object.assign(new Error(msg), { reason, forUser: reason === "slot_full" || reason === "already_claimed" || reason === "slot_closed" });
+    // The three named refusals are this app's own wording. Anything else is
+    // worded by `failureLine` from the status (403, 404 for a night or pass
+    // that is gone, 429, …); the hub's text goes to the console only.
+    throw Object.assign(new Error(msg), { reason, status: res.status, forUser: reason === "slot_full" || reason === "already_claimed" || reason === "slot_closed" });
   }
   return json;
 }
@@ -225,7 +230,7 @@ async function saveSetting(key, value) {
     body: JSON.stringify({ key, value }),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error ?? "Save failed");
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw Object.assign(new Error(json?.error ?? "Save failed"), { status: res.status });
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────
@@ -305,29 +310,45 @@ async function refresh() {
 function clearMessages() { error = ""; notice = ""; }
 function showError(m) { error = m; notice = ""; render(); }
 function showNotice(m) { notice = m; error = ""; render(); }
+// The page's own error line sits behind the backdrop while a form is open, so
+// a form's failure is reported inside it. With no form open it goes to the page.
+// `dlg` is the dialog that submitted: once it is cancelled or replaced, its
+// failure goes to the page, never into a dialog opened since.
+function showFormError(m, dlg = modalEl) {
+  const el = dlg && dlg === modalEl ? dlg.querySelector(".modal-error") : null;
+  if (!el) return showError(m);
+  el.textContent = m;
+  el.hidden = !m;
+  render();
+}
+function clearFormError() { const el = modalEl?.querySelector(".modal-error"); if (el) { el.textContent = ""; el.hidden = true; } }
+const FORM_ERROR = `<div class="error modal-error" data-testid="form-error" role="alert" hidden></div>`;
 
 // ── Resident actions ───────────────────────────────────────────────────────────
 
 async function claimNight(nightId, guestName, vehicle) {
   const night = nights.find(n => n.id === nightId);
   if (!night || !ME) return;
+  const dlg = modalEl;
   if (!DB) {
-    if (myClaim(claims, nightId, ME.id)) return showError("You already hold a pass for that night.");
-    if (remaining(night, claims) <= 0) return showError("That night is fully booked.");
+    if (myClaim(claims, nightId, ME.id)) return showFormError("You already hold a pass for that night.");
+    if (remaining(night, claims) <= 0) return showFormError("That night is fully booked.");
     claims = [...claims, { id: uid("claim"), night_id: nightId, member_id: ME.id, guest_name: guestName, vehicle, claimed_at: nowIso() }];
     closeModal(); showNotice("Guest pass claimed."); return;
   }
   try {
     const { claim_id } = await slotCall(CLAIM_URL, { slot_id: nightId, guest_name: guestName, vehicle }, "Claim");
     claims = [...claims, { id: claim_id, night_id: nightId, member_id: ME.id, guest_name: guestName, vehicle, claimed_at: nowIso() }];
-    closeModal();
+    closeDialog(dlg);
     showNotice("Guest pass claimed.");
   } catch (e) {
     await loadData().catch(() => {});
+    // An answer lost after the claim was stored: the re-read shows the pass held.
+    if (outcomeUnknown(e) && myClaim(claims, nightId, ME.id)) { console.error(e); closeDialog(dlg); return showNotice("Guest pass claimed."); }
     // A refusal the hub named (full, already held, closed) cannot succeed on a
     // retry, so the form goes and the reason shows over the re-read schedule.
-    if (e?.forUser) closeModal();
-    showError(failText(e, "Couldn’t claim the pass — try again."));
+    if (e?.forUser) closeDialog(dlg);
+    showFormError(failLine(e, { action: "claim the pass", thing: "night" }), dlg);
   }
 }
 
@@ -341,7 +362,7 @@ async function releaseNight(nightId) {
     await slotCall(RELEASE_URL, { slot_id: nightId }, "Release");
     claims = claims.filter(c => c.id !== mine.id);
     showNotice("Pass released.");
-  } catch (e) { await loadData().catch(() => {}); showError(failText(e, "Couldn’t release the pass — try again.")); }
+  } catch (e) { await loadData().catch(() => {}); showError(failLine(e, { action: "release the pass", thing: "pass" })); }
 }
 
 // ── Board actions (nights are write_privileged_only) ────────────────────────────
@@ -377,9 +398,9 @@ function pinnedIds(form) {
 }
 
 // A save whose answer never came, or whose retry met the first attempt's row,
-// may have landed: the form's nights are read back by id. null: none is there,
-// or they could not be read, and the save failed as before. Otherwise the
-// stored nights.
+// may have landed: the form's nights are read back by id. null: none is there
+// (or the outcome was not unknown), and the save failed as before. false: they
+// could not be read, so nothing is known. Otherwise the stored nights.
 async function landedUnheard(form, e) {
   const ids = pinnedIds(form);
   if (!ids.length || !outcomeUnknown(e)) return null;
@@ -390,7 +411,7 @@ async function landedUnheard(form, e) {
       rows.push(...(await db(`SELECT * FROM app_guest_parking__nights WHERE id IN (${chunk.map(() => "?").join(", ")})`, chunk)).rows);
     }
     return rows.length ? rows : null;
-  } catch (err) { console.error(err); return null; }
+  } catch (err) { console.error(err); return false; }
 }
 
 // The success path of a save that landed unheard, run once now. A form edited
@@ -401,7 +422,7 @@ async function openedUnheard(form, stored, opened, { date, capacity, note }) {
   nights = [...nights.filter(n => !stored.some(s => s.id === n.id || s.date === n.date)), ...stored]
     .sort((a, b) => a.date.localeCompare(b.date));
   const single = stored.find(s => s.id === form.dataset.nightId) ?? null;
-  closeModal();
+  closeDialog(form.closest(".modal-backdrop"));
   if (opened) {
     const same = stored.length === opened.length
       && opened.every(o => stored.some(s => s.id === o.id && Number(s.capacity) === o.capacity && s.note === o.note));
@@ -422,12 +443,13 @@ async function openedUnheard(form, stored, opened, { date, capacity, note }) {
 }
 
 async function submitNightForm(form) {
-  if (!isBoard()) return showError("Only the board can open parking nights.");
+  const dlg = modalEl;
+  if (!isBoard()) return showFormError("Only the board can open parking nights.");
   const date = form.date.value;
   const capacity = Math.max(0, Number(form.capacity.value) || 0);
   const note = form.note.value.trim();
   const rangeEnd = form.range_end.value;
-  if (!date) return showError("Choose a date.");
+  if (!date) return showFormError("Choose a date.");
   const isRange = !!rangeEnd && rangeEnd > date;
   // A night this form already sent counts as not there yet: it is sent again
   // under the same id, and if it is stored the read-back below finds it.
@@ -448,12 +470,12 @@ async function submitNightForm(form) {
       if (DB && opened.length) await dbBatch(nightInsertStatements(opened));
       nights = [...nights.filter(n => !opened.some(o => o.id === n.id)), ...opened].sort((a, b) => a.date.localeCompare(b.date));
       const made = opened.length;
-      closeModal(); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
+      closeDialog(dlg); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
     } else {
-      if (taken(date)) { showError("That night already exists — edit it instead."); return; }
+      if (taken(date)) { showFormError("That night already exists — edit it instead."); return; }
       const night = await createNight((form.dataset.nightId ??= uid("night")), date, capacity, note);
       await nightOpened(night);
-      closeModal(); showNotice("Parking night opened.");
+      closeDialog(dlg); showNotice("Parking night opened.");
     }
   } catch (e) {
     const stored = await landedUnheard(form, e);
@@ -461,27 +483,33 @@ async function submitNightForm(form) {
     // Read again before the retry: a night someone else opened meanwhile (one
     // per date) would otherwise refuse the same request every time.
     await loadData().catch(() => {});
-    showError(failText(e, "Couldn’t open the parking night — try again."));
+    // A retry's UNIQUE answer is its own first attempt's row only if the read-back
+    // could say so; when it failed, nothing is known: "try again", not "already exists".
+    if (stored === false) { console.error(e); return showFormError(failureLine(null, { action: "open the parking night", thing: "parking night" }), dlg); }
+    showFormError(failLine(e, { action: "open the parking night", thing: "parking night" }), dlg);
   }
 }
 
 // The hub answers a write the row policy narrowed to nothing as a success with
-// no rows changed. The schedule is read again and the board member is told.
-async function nightUnchanged() {
-  await loadData().catch(() => {});
-  closeModal();
-  showError("This night can no longer be changed.");
+// no rows changed. The schedule is read again and the board member is told:
+// a night still there was refused them (the writes are plain `WHERE id = ?`),
+// a night gone was removed, and a failed read says neither.
+async function nightUnchanged(nightId, action, dlg = null) {
+  const found = await loadData().then(() => nights.some(n => n.id === nightId), (e) => { console.error(e); return null; });
+  closeDialog(dlg);
+  showError(failureLine(null, { action, thing: "night", found }));
 }
 
 async function updateCapacity(nightId, capacity) {
   const night = nights.find(n => n.id === nightId);
   if (!night) return;
+  const dlg = modalEl;
   if (DB) {
     const { changed } = await db(`UPDATE app_guest_parking__nights SET capacity = ?, updated_at = ? WHERE id = ?`, [capacity, nowIso(), nightId]);
-    if (changed === 0) return nightUnchanged();
+    if (changed === 0) return nightUnchanged(nightId, "update the capacity", dlg);
   }
   nights = nights.map(n => n.id === nightId ? { ...n, capacity } : n);
-  closeModal();
+  closeDialog(dlg);
   showNotice("Capacity updated.");
 }
 
@@ -492,11 +520,11 @@ async function toggleNight(nightId) {
   try {
     if (DB) {
       const { changed } = await db(`UPDATE app_guest_parking__nights SET status = ?, updated_at = ? WHERE id = ?`, [next, nowIso(), nightId]);
-      if (changed === 0) return nightUnchanged();
+      if (changed === 0) return nightUnchanged(nightId, "update the night");
     }
     nights = nights.map(n => n.id === nightId ? { ...n, status: next } : n);
     showNotice(next === "closed" ? "Night closed to new passes." : "Night reopened.");
-  } catch (e) { showError(failText(e, "Couldn’t update the night — try again.")); }
+  } catch (e) { showError(failLine(e, { action: "update the night", thing: "night" })); }
 }
 
 async function deleteNight(nightId) {
@@ -510,12 +538,12 @@ async function deleteNight(nightId) {
   try {
     if (DB) {
       const { changed } = await db(`DELETE FROM app_guest_parking__nights WHERE id = ?`, [nightId]);
-      if (changed === 0) return nightUnchanged();
+      if (changed === 0) return nightUnchanged(nightId, "delete the night");
     }
     nights = nights.filter(n => n.id !== nightId);
     claims = claims.filter(c => c.night_id !== nightId);
     showNotice("Parking night deleted.");
-  } catch (e) { showError(failText(e, "Couldn’t delete the night — try again.")); }
+  } catch (e) { showError(failLine(e, { action: "delete the night", thing: "night" })); }
 }
 
 // ── Modals ──────────────────────────────────────────────────────────────────────
@@ -531,6 +559,8 @@ function openModal(html) {
   if (first) first.focus();
 }
 function closeModal() { modalEl?.remove(); modalEl = null; }
+// Close the dialog that submitted, only if it is still the open one.
+function closeDialog(dlg) { if (dlg === modalEl) closeModal(); }
 window.closeModal = closeModal;
 
 window.openClaimModal = function (nightId) {
@@ -549,6 +579,7 @@ window.openClaimModal = function (nightId) {
         <input id="c-vehicle" name="vehicle" maxlength="80" placeholder="Make / color / plate" />
       </div>
       <p class="muted tiny" style="margin-bottom:10px">Visible to residents and the board so the gate knows who's expected.</p>
+      ${FORM_ERROR}
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">Claim pass</button>
@@ -577,6 +608,7 @@ window.openAddNightModal = function () {
         <input id="n-range" name="range_end" type="date" min="${today()}" />
         <span class="muted tiny">Leave blank for a single night, or pick an end date to open the same number of passes for every night in the range.</span>
       </div>
+      ${FORM_ERROR}
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">Open night</button>
@@ -596,6 +628,7 @@ window.openEditNightModal = function (nightId) {
         <input id="e-cap" name="capacity" type="number" min="${held}" max="99" value="${esc(String(night.capacity))}" required data-autofocus />
         ${held ? `<span class="muted tiny">${held} already claimed — capacity can't go below that.</span>` : ""}
       </div>
+      ${FORM_ERROR}
       <div class="modal-actions">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
@@ -624,6 +657,7 @@ window.openSettingsModal = function () {
   openModal(`
     <h3>${glyph("gear")} Guest Parking settings</h3>
     ${controls}
+    ${FORM_ERROR}
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Close</button>
       ${IS_ADMIN ? `<button class="btn btn-primary" onclick="saveSettings()">Save</button>` : ""}
@@ -633,8 +667,10 @@ window.openSettingsModal = function () {
 window.saveSettings = async function () {
   const groupId = document.getElementById("s-group").value || null;
   const cap = Math.max(0, Number(document.getElementById("s-cap").value) || 0);
+  const dlg = modalEl;
   const btn = modalEl?.querySelector(".modal-actions .btn-primary");
   if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  clearFormError();
   try {
     await Promise.all([
       saveSetting("board_group_id", groupId ?? ""),
@@ -642,11 +678,11 @@ window.saveSettings = async function () {
     ]);
     settings.board_group_id = groupId;
     settings.default_capacity = cap;
-    closeModal();
+    closeDialog(dlg);
     render();
   } catch (e) {
     if (btn) { btn.disabled = false; btn.textContent = "Save"; }
-    showError(failText(e, "Couldn’t save the settings — try again."));
+    showFormError(failLine(e, { action: "save the settings", thing: "setting" }), dlg);
   }
 };
 
@@ -772,10 +808,12 @@ document.addEventListener("submit", (e) => {
     e.preventDefault();
     const btn = form.querySelector(".btn-primary");
     if (btn) { btn.disabled = true; btn.textContent = "Claiming…"; }
+    clearFormError();
+    const dlg = modalEl;
     // claimNight reports its own failures and leaves the form open, so the
     // button is restored however the call ends (a claimed pass closes the form).
     claimNight(currentClaimNightId, form.guest_name.value.trim(), form.vehicle.value.trim())
-      .catch((err) => showError(failText(err, "Couldn’t claim the pass — try again.")))
+      .catch((err) => showFormError(failLine(err, { action: "claim the pass", thing: "night" }), dlg))
       .finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Claim pass"; } });
     return;
   }
@@ -784,6 +822,7 @@ document.addEventListener("submit", (e) => {
     const btn = form.querySelector(".btn-primary");
     if (btn?.disabled) return; // a save is already out
     if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
+    clearFormError();
     submitNightForm(form).finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Open night"; } });
     return;
   }
@@ -793,8 +832,10 @@ document.addEventListener("submit", (e) => {
     const btn = form.querySelector(".btn-primary");
     if (btn?.disabled) return; // a save is already out
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    clearFormError();
+    const dlg = modalEl;
     updateCapacity(nightId, Math.max(0, Number(form.capacity.value) || 0))
-      .catch((err) => showError(failText(err, "Couldn’t update the capacity — try again.")))
+      .catch((err) => showFormError(failLine(err, { action: "update the capacity", thing: "night" }), dlg))
       .finally(() => { if (btn) { btn.disabled = false; btn.textContent = "Save"; } });
     return;
   }

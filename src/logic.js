@@ -103,6 +103,30 @@ export function outcomeUnknown(e) {
   return e?.status == null || e.status === 400 || (e.status >= 500 && e.status !== 507);
 }
 
+/**
+ * The line a failed write shows ("Refused, gone, or failed" in the app-template
+ * guide): "try again" only when retrying can work. `action` and `thing` are the
+ * app's own words. `found` is the caller's re-read after a write that changed
+ * nothing: false = the row is gone, true = it is still there, null = the
+ * re-read failed (say neither removed nor changed). A row still there after a
+ * plain `WHERE id = ?` write means the row policy refused it; only a `guarded`
+ * write (one with a state condition) can have been "changed by someone else".
+ * Decided from the error's `status` / `code`, never from the hub's text. The
+ * slot endpoints' named refusals (full, already held, closed) arrive as
+ * `forUser` lines worded by `slotCall`.
+ */
+export function failureLine(e, { action, thing, found, guarded = false } = {}) {
+  if (e?.forUser) return e.message;
+  if (e?.code === "UNIQUE_CONSTRAINT" || /UNIQUE constraint failed/i.test(String(e?.message ?? ""))) return `That ${thing} already exists.`;
+  if (e?.status === 403 || (found === true && !guarded)) return `You don’t have permission to ${action}.`;
+  if (e?.status === 507) return "The household’s storage is full — free up space first.";
+  if (e?.status === 429) return "Too many tries — wait a minute and try again.";
+  if (found === null) return `Couldn’t ${action} — try again.`;
+  if (found === false || (found === undefined && e?.status === 404)) return `This ${thing} has been removed.`;
+  if (found === true || e?.status === 409) return `This ${thing} was changed by someone else — check it first.`;
+  return `Couldn’t ${action} — try again.`;
+}
+
 // ── Access control ────────────────────────────────────────────────────────────
 
 // Board members configure capacity and open/close nights. This mirrors the hub's

@@ -119,6 +119,12 @@ describe("slotCall() rejects every answer that is not a result", () => {
       expect(err).toMatchObject({ message, reason, forUser: true });
     }
   });
+  it("any other refusal carries its status for the page to word", async () => {
+    for (const status of [403, 404, 429]) {
+      const err = await slotCall(() => new Response(JSON.stringify({ error: "Refused" }), { status, headers: { "Content-Type": "application/json" } })).then(() => null, (e) => e);
+      expect(err).toMatchObject({ status, forUser: false });
+    }
+  });
 });
 
 const sources = readdirSync(srcDir)
