@@ -123,7 +123,7 @@
 import { esc, memberColor, initial, hubConfirm, hubAlert, glyph, hubToday } from "/hub-sdk.js";
 import {
   toISODate, addDays, relativeDay, fromISODate,
-  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard, nightInsertStatements,
+  claimedCount, remaining, myClaim, isClaimable, isBoard as _isBoard, nightInsertStatements, outcomeUnknown,
 } from "./logic.js";
 
 const CONTEXT          = window.__CONTEXT_URL      ?? "";
@@ -177,7 +177,7 @@ async function db(sql, params = []) {
     body: JSON.stringify({ sql, params }),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw Object.assign(new Error(json?.error || "Couldn’t reach the hub. Try again."), { status: res.status });
   return json;
 }
 
@@ -190,7 +190,7 @@ async function dbBatch(statements) {
     body: JSON.stringify({ statements }),
   });
   const json = await res.json().catch(() => null);
-  if (!res.ok || !json || typeof json !== "object" || json.error) throw new Error(json?.error || "Couldn’t reach the hub. Try again.");
+  if (!res.ok || !json || typeof json !== "object" || json.error) throw Object.assign(new Error(json?.error || "Couldn’t reach the hub. Try again."), { status: res.status });
   return json;
 }
 
@@ -346,8 +346,8 @@ async function releaseNight(nightId) {
 
 // ── Board actions (nights are write_privileged_only) ────────────────────────────
 
-async function createNight(date, capacity, note) {
-  const night = { id: uid("night"), date, capacity, status: "open", note, created_by: ME.id, created_at: nowIso(), updated_at: nowIso() };
+async function createNight(id, date, capacity, note) {
+  const night = { id, date, capacity, status: "open", note, created_by: ME.id, created_at: nowIso(), updated_at: nowIso() };
   if (DB) {
     await db(
       `INSERT INTO app_guest_parking__nights (id, date, capacity, status, note, created_by, created_at, updated_at)
@@ -359,6 +359,68 @@ async function createNight(date, capacity, note) {
   return night;
 }
 
+async function nightOpened(night) {
+  // Published from the single-night path only. The range branch opens up to
+  // 120 nights in one submit — a whole season of passes is one board
+  // housekeeping action, not 120 things for rules to react to.
+  await publishEvent("guest_parking.night_opened", night.id, {
+    date: night.date,
+    capacity: night.capacity,
+  });
+}
+
+// Every night id this form has minted: the single night's, and one per date of
+// a range. Minted on the form's first Save and sent again on every retry; they
+// go when the form closes.
+function pinnedIds(form) {
+  return [form.dataset.nightId, ...Object.values(JSON.parse(form.dataset.nightIds || "{}"))].filter(Boolean);
+}
+
+// A save whose answer never came, or whose retry met the first attempt's row,
+// may have landed: the form's nights are read back by id. null: none is there,
+// or they could not be read, and the save failed as before. Otherwise the
+// stored nights.
+async function landedUnheard(form, e) {
+  const ids = pinnedIds(form);
+  if (!ids.length || !outcomeUnknown(e)) return null;
+  try {
+    const rows = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      rows.push(...(await db(`SELECT * FROM app_guest_parking__nights WHERE id IN (${chunk.map(() => "?").join(", ")})`, chunk)).rows);
+    }
+    return rows.length ? rows : null;
+  } catch (err) { console.error(err); return null; }
+}
+
+// The success path of a save that landed unheard, run once now. A form edited
+// since that first Save is applied where Edit could apply it (a single night's
+// capacity); anything else is left as stored, with SAVED_AS_FIRST over it.
+const SAVED_AS_FIRST = "Saved as first entered — check it and update what changed.";
+async function openedUnheard(form, stored, opened, { date, capacity, note }) {
+  nights = [...nights.filter(n => !stored.some(s => s.id === n.id || s.date === n.date)), ...stored]
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const single = stored.find(s => s.id === form.dataset.nightId) ?? null;
+  closeModal();
+  if (opened) {
+    const same = stored.length === opened.length
+      && opened.every(o => stored.some(s => s.id === o.id && Number(s.capacity) === o.capacity && s.note === o.note));
+    if (single) await nightOpened(single);
+    return same ? showNotice(`Opened ${opened.length} parking night${opened.length === 1 ? "" : "s"}.`) : showError(SAVED_AS_FIRST);
+  }
+  let line = stored.length === 1 && single?.date === date && single.note === note ? "" : SAVED_AS_FIRST;
+  let night = single;
+  if (!line && Number(single.capacity) !== capacity) {
+    try {
+      const { changed } = await db(`UPDATE app_guest_parking__nights SET capacity = ?, updated_at = ? WHERE id = ?`, [capacity, nowIso(), single.id]);
+      if (changed === 0) line = SAVED_AS_FIRST;
+      else { night = { ...single, capacity }; nights = nights.map(n => n.id === night.id ? night : n); }
+    } catch (err) { console.error(err); line = SAVED_AS_FIRST; }
+  }
+  if (night) await nightOpened(night);
+  return line ? showError(line) : showNotice("Parking night opened.");
+}
+
 async function submitNightForm(form) {
   if (!isBoard()) return showError("Only the board can open parking nights.");
   const date = form.date.value;
@@ -366,33 +428,36 @@ async function submitNightForm(form) {
   const note = form.note.value.trim();
   const rangeEnd = form.range_end.value;
   if (!date) return showError("Choose a date.");
+  const isRange = !!rangeEnd && rangeEnd > date;
+  // A night this form already sent counts as not there yet: it is sent again
+  // under the same id, and if it is stored the read-back below finds it.
+  const pinned = new Set(pinnedIds(form));
+  const taken = (d) => nights.some(n => n.date === d && !pinned.has(n.id));
+  const opened = [];
   try {
-    if (rangeEnd && rangeEnd > date) {
+    if (isRange) {
       // One batch, so the range opens whole or not at all: a failure part-way
       // used to leave some of the nights open under a message that said none were.
-      const opened = [], stamp = nowIso();
+      const rangeIds = JSON.parse(form.dataset.nightIds || "{}"), stamp = nowIso();
       let cur = date;
       while (cur <= rangeEnd && opened.length < 120) {
-        if (!nights.some(n => n.date === cur)) opened.push({ id: uid("night"), date: cur, capacity, status: "open", note, created_by: ME.id, created_at: stamp, updated_at: stamp });
+        if (!taken(cur)) opened.push({ id: (rangeIds[cur] ??= uid("night")), date: cur, capacity, status: "open", note, created_by: ME.id, created_at: stamp, updated_at: stamp });
         cur = addDays(cur, 1);
       }
+      form.dataset.nightIds = JSON.stringify(rangeIds);
       if (DB && opened.length) await dbBatch(nightInsertStatements(opened));
-      nights = [...nights, ...opened].sort((a, b) => a.date.localeCompare(b.date));
+      nights = [...nights.filter(n => !opened.some(o => o.id === n.id)), ...opened].sort((a, b) => a.date.localeCompare(b.date));
       const made = opened.length;
       closeModal(); showNotice(`Opened ${made} parking night${made === 1 ? "" : "s"}.`);
     } else {
-      if (nights.some(n => n.date === date)) { showError("That night already exists — edit it instead."); return; }
-      const night = await createNight(date, capacity, note);
-      // Published from the single-night path only. The range branch above opens
-      // up to 120 nights in one submit — a whole season of passes is one board
-      // housekeeping action, not 120 things for rules to react to.
-      await publishEvent("guest_parking.night_opened", night.id, {
-        date: night.date,
-        capacity: night.capacity,
-      });
+      if (taken(date)) { showError("That night already exists — edit it instead."); return; }
+      const night = await createNight((form.dataset.nightId ??= uid("night")), date, capacity, note);
+      await nightOpened(night);
       closeModal(); showNotice("Parking night opened.");
     }
   } catch (e) {
+    const stored = await landedUnheard(form, e);
+    if (stored) { console.error(e); return openedUnheard(form, stored, isRange ? opened : null, { date, capacity, note }); }
     // Read again before the retry: a night someone else opened meanwhile (one
     // per date) would otherwise refuse the same request every time.
     await loadData().catch(() => {});

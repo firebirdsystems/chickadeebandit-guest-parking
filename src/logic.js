@@ -93,6 +93,16 @@ export function nightInsertStatements(rows, perStatement = 14) {
   return statements;
 }
 
+// Whether a failed write may nonetheless have been stored. A request that
+// threw before any answer carries no status, and the hub answers 400 both for
+// a write that timed out after it was stored and for a retry that met the
+// first attempt's row. A 5xx is the hub failing on its side, possibly after
+// the write was stored. Any other status is taken as a refusal that stored
+// nothing (403, 507, a batch's 409).
+export function outcomeUnknown(e) {
+  return e?.status == null || e.status === 400 || (e.status >= 500 && e.status !== 507);
+}
+
 // ── Access control ────────────────────────────────────────────────────────────
 
 // Board members configure capacity and open/close nights. This mirrors the hub's

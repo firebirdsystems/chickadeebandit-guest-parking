@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   addDays, relativeDay, toISODate, daysInRange,
   claimedCount, remaining, myClaim, isClaimable, isBoard, nightInsertStatements,
+  outcomeUnknown,
 } from "../src/logic.js";
 import { testPrivilegedGateContract } from "./helpers/privileged-gate.mjs";
 
@@ -48,6 +49,21 @@ describe("claim math", () => {
 
 // A range of nights is sent as ONE batch, so it lands whole or not at all. The
 // hub takes at most 25 statements a batch and 100 bound values a statement.
+describe("outcomeUnknown", () => {
+  const failed = (status) => Object.assign(new Error("x"), { status });
+  it("is true for a request that threw with no answer, and for a 400", () => {
+    expect(outcomeUnknown(new TypeError("Failed to fetch"))).toBe(true);
+    expect(outcomeUnknown(undefined)).toBe(true);
+    expect(outcomeUnknown(failed(400))).toBe(true);
+  });
+  it("is true for a server failure, which may have come after the write", () => {
+    for (const status of [500, 503]) expect(outcomeUnknown(failed(status))).toBe(true);
+  });
+  it("is false for a clean refusal", () => {
+    for (const status of [403, 409, 507]) expect(outcomeUnknown(failed(status))).toBe(false);
+  });
+});
+
 describe("nightInsertStatements", () => {
   const rows = (n) => Array.from({ length: n }, (_, i) => ({
     id: `night-${i}`, date: addDays("2026-03-01", i), capacity: 2, note: "Season",
